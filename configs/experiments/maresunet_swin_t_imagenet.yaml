@@ -1,0 +1,15 @@
+# MAResU-Net with a swin_t encoder (ImageNet weights from torchvision).
+# Transformers use more memory than ResNet-18: check with `rsseg benchmark -c <this file>`.
+base: ../base.yaml
+name: maresunet_swin_t_imagenet
+model:
+  arch: swin_t
+  weights: imagenet
+  drop_path: 0.2
+  skip: lam
+  neck: identity
+train:
+  batch_size: 4
+  grad_accum_steps: 8      # effective batch 32
+  lr: 0.0001               # transformers prefer a lower AdamW learning rate
+  scheduler: cosine

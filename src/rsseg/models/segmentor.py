@@ -74,7 +74,7 @@ def build_segmentor(
     if cfg.neck not in ("identity", "vq"):
         raise ValueError(f"model.neck must be 'identity' or 'vq', got {cfg.neck!r}")
 
-    backbone = backbone or build_backbone(cfg.arch, cfg.weights)
+    backbone = backbone or build_backbone(cfg.arch, cfg.weights, cfg.drop_path)
     filters = feature_channels(cfg.arch)
 
     inputs = keras.Input((None, None, 3), name="image")

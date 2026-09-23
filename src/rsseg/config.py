@@ -58,8 +58,12 @@ class VQConfig:
 @dataclass
 class ModelConfig:
     arch: str = "resnet18"
+    """Encoder: ``resnet18/34/50``, ``swin_t/s/b`` or ``vit_s_16/vit_b_16/vit_l_16``
+    (``rsseg backbones`` lists them)."""
     weights: str = "imagenet"
     """``imagenet``, ``none`` or a path to a ``.weights.h5`` backbone exported by ``rsseg pretrain``."""
+    drop_path: float = 0.2
+    """Maximum stochastic-depth rate of transformer encoders (ignored by ResNets)."""
     skip: str = "lam"
     """``lam`` (linear PAM + CAM as in MAResU-Net) or ``plain`` (U-Net-like identity skips)."""
     neck: str = "identity"
@@ -109,6 +113,8 @@ class EvalConfig:
 class SSLConfig:
     arch: str = "resnet18"
     weights: str = "none"
+    drop_path: float = 0.1
+    """Maximum stochastic-depth rate of transformer encoders (DINO uses 0.1 for ViT)."""
     epochs: int = 100
     batch_size: int = 32
     lr: float = 5e-4

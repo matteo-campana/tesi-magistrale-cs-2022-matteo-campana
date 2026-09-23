@@ -1,0 +1,15 @@
+# Fine-tuning from a DINO-pretrained ViT-S/16. Run first:
+#   rsseg pretrain -c configs/ssl/dino_vit_s16.yaml
+base: ../base.yaml
+name: maresunet_vit_s_16_dino
+model:
+  arch: vit_s_16
+  weights: runs/dino_vit_s16_backbone.weights.h5
+  drop_path: 0.1
+  skip: lam
+  neck: identity
+train:
+  batch_size: 4
+  grad_accum_steps: 8      # effective batch 32
+  lr: 0.0001
+  scheduler: cosine

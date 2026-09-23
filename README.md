@@ -8,7 +8,7 @@ Dr. Simone Scardapane e Dr. Valerio Marsocci.
 **Keras 3 su backend PyTorch · tracking con MLflow · eseguibile su una singola GPU NVIDIA RTX 4060 (8 GB).**
 
 > **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione) ed è verificato
-> da 32 test automatici su CPU e da run end-to-end su dati sintetici. Gli esperimenti sul dataset Potsdam reale sono
+> da 44 test automatici su CPU e da run end-to-end su dati sintetici. Gli esperimenti sul dataset Potsdam reale sono
 > il prossimo passo: vedi il [piano](docs/PIANO_DI_SVILUPPO.md).
 
 ## Di cosa si tratta
@@ -51,6 +51,7 @@ rsseg benchmark -c configs/experiments/maresunet_r18_imagenet.yaml   # entra in 
 rsseg train     -c configs/experiments/maresunet_r18_imagenet.yaml   # training + valutazione su tile di test
 rsseg pretrain  -c configs/ssl/dino_r18.yaml                         # DINO sull'encoder
 rsseg train     -c configs/experiments/maresunet_r18_dino.yaml       # fine-tuning dal backbone DINO
+rsseg train     -c configs/experiments/maresunet_swin_t_imagenet.yaml # encoder Swin-T (Vision Transformer)
 bash scripts/run_thesis_grid.sh                                      # griglia 2×2×2 della tesi × 3 seed
 ```
 
@@ -67,14 +68,21 @@ Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni)
 | `rsseg evaluate` | Valuta un file di pesi su tile intere (finestra scorrevole) |
 | `rsseg benchmark` | Picco di VRAM e immagini/s di una configurazione |
 | `rsseg report` | Tabella media ± std su più run (es. seed) |
+| `rsseg backbones` | Elenco degli encoder disponibili (ResNet, Swin, ViT), canali e pesi ImageNet (`--params` conta i parametri) |
 
 Ogni valore di configurazione si può sovrascrivere: `--set train.batch_size=4 train.grad_accum_steps=8 model.arch=resnet34`.
+
+L'interfaccia a riga di comando usa [rich](https://github.com/Textualize/rich): riepilogo della
+configurazione, log colorati, barre di avanzamento per epoca (training e validazione), preparazione
+e valutazione, risultati in tabelle (con una tabella per classe). Log e barre vanno su stderr, i
+risultati su stdout; con `--json` (prima o dopo il sotto-comando) si ottiene il JSON grezzo, utile negli script.
 
 ## Cosa c'è dentro
 
 | Parte | Implementazione |
 |---|---|
 | Backbone | ResNet18/34/50 in Keras con pesi ImageNet portati da torchvision (equivalenza numerica testata) |
+| Vision Transformer | Swin-T/S/B (gerarchico, stride 4–32) e ViT-S/B/L 16 (piramide "simple feature pyramid" BEiT/ViTDet, embedding di posizione interpolati), stochastic depth, pesi ImageNet da torchvision con equivalenza numerica testata; ViT-S/16 pensato per DINO |
 | MAResU-Net | Linear PAM (LAM, O(N)) + channel attention sulle skip, decoder della tesi. Variante `plain` (U-Net) per l'ablation. |
 | VQ | Codebook EMA (inizializzato dai dati, restart dei codici morti), straight-through, perplexity/usage su MLflow, quantizzazione opzionale delle skip |
 | DINO | Head con prototipi, loss per campione, teacher EMA, schedule coseno, multi-crop 2×224 + N×96, monitor di collasso |
@@ -121,7 +129,7 @@ reimplementazione verranno pubblicati in `docs/RISULTATI.md`.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                       # 32 test, ~30 s su CPU
+pytest -q                       # 44 test, ~30 s su CPU
 ruff check src tests && ruff format --check src tests
 ```
 
