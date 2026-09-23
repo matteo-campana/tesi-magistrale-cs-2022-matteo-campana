@@ -44,6 +44,9 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["rsseg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
