@@ -22,7 +22,9 @@ _CLASS_COLOURS = np.array(
 )
 
 
-def make_tile(size: int, rng: np.random.Generator, n_shapes: int = 24) -> tuple[np.ndarray, np.ndarray]:
+def make_tile(
+    size: int, rng: np.random.Generator, n_shapes: int = 24
+) -> tuple[np.ndarray, np.ndarray]:
     labels = np.zeros((size, size), dtype=np.uint8)
     for _ in range(n_shapes):
         c = int(rng.integers(0, NUM_CLASSES))
@@ -33,7 +35,9 @@ def make_tile(size: int, rng: np.random.Generator, n_shapes: int = 24) -> tuple[
     return np.clip(image, 0, 255).astype(np.uint8), PALETTE[labels]
 
 
-def make_synthetic_potsdam(out_dir: str | Path, size: int = 256, tiles: tuple[str, ...] = ALL_TILES, seed: int = 0) -> Path:
+def make_synthetic_potsdam(
+    out_dir: str | Path, size: int = 256, tiles: tuple[str, ...] = ALL_TILES, seed: int = 0
+) -> Path:
     out = Path(out_dir)
     (out / "2_Ortho_RGB").mkdir(parents=True, exist_ok=True)
     (out / "5_Labels_all").mkdir(parents=True, exist_ok=True)

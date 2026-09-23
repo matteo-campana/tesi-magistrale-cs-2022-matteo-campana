@@ -87,7 +87,9 @@ def crop_positions(length: int, size: int, stride: int) -> list[int]:
     return pos
 
 
-def _process_tile(args: tuple[TileFiles, str, Path, int, int, bool]) -> tuple[list[dict], dict | None, np.ndarray | None]:
+def _process_tile(
+    args: tuple[TileFiles, str, Path, int, int, bool],
+) -> tuple[list[dict], dict | None, np.ndarray | None]:
     files, split, root, size, stride, make_crops = args
     image = load_rgb(files.image)
     mask = rgb_to_index(load_rgb(files.label))
@@ -172,7 +174,9 @@ def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
     if acc[2, 0] > 0:
         mean = acc[0] / acc[2]
         std = np.sqrt(np.maximum(acc[1] / acc[2] - mean**2, 0.0))
-        (root / "stats.json").write_text(json.dumps({"mean": mean.tolist(), "std": std.tolist()}, indent=2))
+        (root / "stats.json").write_text(
+            json.dumps({"mean": mean.tolist(), "std": std.tolist()}, indent=2)
+        )
     (root / "split.json").write_text(json.dumps({"protocol": cfg.protocol, **split}, indent=2))
 
     counts = {s: sum(r["split"] == s for r in crop_rows) for s in ("train", "val")}

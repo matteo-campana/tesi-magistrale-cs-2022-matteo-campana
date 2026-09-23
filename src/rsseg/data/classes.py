@@ -37,9 +37,7 @@ PALETTE = np.array(
 # Legacy order: 0 clutter, 1 impervious, 2 car, 3 building, 4 low vegetation, 5 tree.
 LEGACY_TO_INDEX = {0: 5, 1: 0, 2: 4, 3: 1, 4: 2, 5: 3}
 
-_CODES = (
-    PALETTE[:, 0].astype(np.int64) << 16 | PALETTE[:, 1].astype(np.int64) << 8 | PALETTE[:, 2]
-)
+_CODES = PALETTE[:, 0].astype(np.int64) << 16 | PALETTE[:, 1].astype(np.int64) << 8 | PALETTE[:, 2]
 _ORDER = np.argsort(_CODES)
 _SORTED_CODES = _CODES[_ORDER]
 

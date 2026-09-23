@@ -45,7 +45,9 @@ def get_split(
         val = list(val_tiles or STANDARD_VAL_DEFAULT)
         unknown = set(val) - set(STANDARD_TRAIN)
         if unknown:
-            raise ValueError(f"validation tiles must come from the training tiles: {sorted(unknown)}")
+            raise ValueError(
+                f"validation tiles must come from the training tiles: {sorted(unknown)}"
+            )
         train = [t for t in STANDARD_TRAIN if t not in val]
         test = list(STANDARD_TEST)
     elif protocol == "thesis2022":

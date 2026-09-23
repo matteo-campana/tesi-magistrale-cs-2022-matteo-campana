@@ -45,7 +45,9 @@ class _GaussianBlur:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        return img.filter(ImageFilter.GaussianBlur(radius=random.uniform(self.radius_min, self.radius_max)))
+        return img.filter(
+            ImageFilter.GaussianBlur(radius=random.uniform(self.radius_min, self.radius_max))
+        )
 
 
 class _Solarize:
@@ -101,7 +103,9 @@ class MultiCropAugment:
     def __call__(self, image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
         globals_ = np.stack([_to_array(self.global1(image)), _to_array(self.global2(image))])
         if self.local_crops_number:
-            locals_ = np.stack([_to_array(self.local(image)) for _ in range(self.local_crops_number)])
+            locals_ = np.stack(
+                [_to_array(self.local(image)) for _ in range(self.local_crops_number)]
+            )
         else:
             locals_ = np.zeros((0, self.local_size, self.local_size, 3), dtype=np.float32)
         return globals_, locals_
