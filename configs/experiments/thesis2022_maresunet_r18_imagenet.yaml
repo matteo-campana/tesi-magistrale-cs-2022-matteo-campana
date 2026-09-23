@@ -1,0 +1,17 @@
+# Same model as the thesis' best one, on the thesis data protocol (for comparison with Tab. 4.5).
+# Differences kept on purpose: clutter is trained, metrics use a global confusion matrix.
+base: maresunet_r18_imagenet.yaml
+name: thesis2022_maresunet_r18_imagenet
+data:
+  root: data/potsdam_thesis2022
+  protocol: thesis2022
+  crop_size: 256
+  train_stride: 256
+  augment: false
+train:
+  batch_size: 32
+  grad_accum_steps: 1
+  optimizer: adam
+eval:
+  window: 256
+  stride: 128

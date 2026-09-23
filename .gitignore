@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Dati, run ed esperimenti (mai versionati). Ancorati alla radice: src/rsseg/data/ è codice.
+/data/
+/runs/
+/mlruns/
+/mlflow.db
+/mlartifacts/
+reports/*.json
+*.weights.h5
+*.keras
+*.ckpt
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store

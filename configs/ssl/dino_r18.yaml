@@ -1,0 +1,9 @@
+base: ../base.yaml
+name: dino_r18
+ssl:
+  arch: resnet18
+  weights: none            # "imagenet" = continue pre-training from ImageNet on the aerial domain
+  epochs: 100
+  batch_size: 32
+  local_crops_number: 6
+  export_path: runs/dino_r18_backbone.weights.h5

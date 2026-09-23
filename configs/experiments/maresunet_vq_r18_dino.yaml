@@ -1,0 +1,9 @@
+# Fine-tuning from a DINO-pretrained encoder. Run first:
+#   rsseg pretrain -c configs/ssl/dino_r18.yaml
+base: ../base.yaml
+name: maresunet_vq_r18_dino
+model:
+  arch: resnet18
+  weights: runs/dino_r18_backbone.weights.h5
+  skip: lam
+  neck: vq

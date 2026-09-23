@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      KERAS_BACKEND: torch
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v5
+      # setup-uv creates `.venv` for this Python and activates it (explicit: the default changed in v6).
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install (CPU PyTorch)
+        run: |
+          uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          uv pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          uv run --no-sync ruff check src tests
+          uv run --no-sync ruff format --check src tests
+      - name: Tests
+        run: uv run --no-sync pytest -q
