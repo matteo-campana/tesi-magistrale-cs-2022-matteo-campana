@@ -1,0 +1,48 @@
+---
+  model : "maresunet18-ss"
+  model_name :
+    - "maresunet18-ss"
+    - "maresunet18-ss-vq"
+    - "maresunet50-ss"
+    - "maresunet50-ss-vq"
+    - "MASWinTNet-ss"
+    - "MASWinTNet-nano-ss"
+    - "MASWinTNet-vq-ss"
+    - "MASWinTNet-nano-vq-ss"
+    - "maresunet50-ss-pretrain-EsViT"
+    - "maresunet50-ss-vq-pretrain-EsViT"
+    - "MASWinTNet-ss-pretrain-imagenet"
+    - "MASWinTNet-nano-ss-pretrain-imagenet"
+    - "MASWinTNet-vq-ss-pretrain-imagenet"
+    - "MASWinTNet-nano-vq-ss-pretrain-imagenet"
+    - "MASWinTNet-ss-pretrain-EsViT"
+    - "MASWinTNet-nano-ss-pretrain-EsViT"
+    - "MASWinTNet-vq-ss-pretrain-EsViT"
+    - "MASWinTNet-nano-vq-ss-pretrain-EsViT"
+    - "SwinTUNet-ss"
+    - "SwinTUNet-ss-pretrain-imagenet"
+    - "SwinTUNet-ss-pretrain-EsViT"
+    - "SwinTUNet-vq-ss"
+    - "SwinTUNet-vq-ss-pretrain-imagenet"
+    - "SwinTUNet-vq-ss-pretrain-EsViT"
+    - "SwinTUNet-ss-fe-pretrain-imagenet"
+    - "SwinTUNet-ss-fe-pretrain-EsViT"
+    - "SwinTUNet-vq-ss-fe-pretrain-imagenet"
+    - "SwinTUNet-vq-ss-fe-pretrain-EsViT"
+    - "MASWinTNet-ss-fe-pretrain-imagenet"
+    - "MASWinTNet-vq-ss-fe-pretrain-imagenet"
+    - "MASWinTNet-ss-fe-pretrain-EsViT"
+    - "MASWinTNet-vq-ss-fe-pretrain-EsViT"
+  batch_size : 8
+  epochs : 100
+  train_dataset_length : -1   #all entries in the dataset
+  valid_dataset_length : -1   #all entries in the dataset
+  vq_flag : False
+  train_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Postdam/Dataset/Postdam_data/train/train/"
+  valid_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Postdam/Dataset/Postdam_data/validation/"
+  learning_rate : 0.006
+  pretrain : False
+  last_epoch : -1
+  logdir_path : "None"
+  ckpt_path : "None"
+  dataset_name : "Potsdam"

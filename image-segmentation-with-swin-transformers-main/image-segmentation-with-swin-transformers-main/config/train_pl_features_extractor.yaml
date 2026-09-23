@@ -1,0 +1,38 @@
+---
+model_features_extractor: maresunet18
+model_semantic_segmentation: maresunet18-ss
+models_features_extractor:
+  - maresunet18
+  - maresunet18-vq
+  - maresunet50
+  - maresunet50-vq
+  - MASWinTNet
+  - MASWinTNet-nano
+  - MASWinTNet-vq
+  - MASWinTNet-nano-vq
+  - maresunet50-pretrain-dino-fair
+  - maresunet50-vq-pretrain-dino-fair
+models_semantic_segmentation:
+  - maresunet18-ss
+  - maresunet18-ss-vq
+  - maresunet50-ss
+  - maresunet50-ss-vq
+  - MASWinTNet-ss
+  - MASWinTNet-nano-ss
+  - MASWinTNet-vq-ss
+  - MASWinTNet-nano-vq-ss
+  - maresunet50-ss-pretrain-dino-fair
+  - maresunet50-ss-vq-pretrain-dino-fair
+vq_flag: false
+pretrain: false
+train_dataset_length: -1
+valid_dataset_length: -1
+batch_size: 8
+epochs: 100
+learning_rate: 0.006
+train_data_path: "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Dataset/Vaihingen_processed/train"
+valid_data_path: "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Dataset/Vaihingen_processed/validation"
+ckpt_path: None
+last_epoch: -1
+logdir_path: None
+dataset_name : "Vaihingen"

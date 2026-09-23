@@ -1,0 +1,47 @@
+---
+  model : "swin-transformer-vq-vae"
+  model_name :
+    - "resnet50-vae"
+    - "resnet101-vae"
+    - "resnet152-vae"
+    - "resnet50-vq-vae"
+    - "resnet101-vq-vae"
+    - "resnet152-vq-vae"
+    - "resnet50-ss-vae"
+    - "resnet101-ss-vae"
+    - "resnet152-ss-vae"
+    - "resnet50-ss-vq-vae"
+    - "resnet101-ss-vq-vae"
+    - "resnet152-ss-vq-vae"
+    - "maresunet50"
+    - "maresunet101"
+    - "maresunet152"
+    - "maresunet50-vq"
+    - "maresunet101-vq"
+    - "maresunet152-vq"
+    - "maresunet50-ss"
+    - "maresunet101-ss"
+    - "maresunet152-ss"
+    - "maresunet50-ss-vq"
+    - "maresunet101-ss-vq"
+    - "maresunet152-ss-vq"
+    - "swin-transformer-vae"
+    - "swin-transformer-vae-ss"
+    - "swin-transformer-vq-vae"
+    - "swin-transformer-vq-vae-ss"
+
+  batch_size : 8
+  epochs : 100
+  dataset_length : -1 #all entries in the dataset
+  vq_flag : True
+  train_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Dataset/Vaihingen_processed/train"
+  valid_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Dataset/Vaihingen_processed/validation"
+  learning_rate : 0.006
+  last_epoch : -1
+  models_weights_path : "None"
+  pretrain : False
+  last_epoch : -1
+  logdir_path : "None"
+  models_weights_path : "None"
+  pretrained_model_student_name : "None"
+  pretrained_model_teacher_name : "None"

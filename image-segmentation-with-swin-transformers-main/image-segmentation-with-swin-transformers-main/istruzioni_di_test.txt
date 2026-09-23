@@ -1,0 +1,177 @@
+
+Non e' necessario modificare la batch_size dato che ho implementato il
+fine-tuning con Pytorch lugthening, e trova da sola la dimensione della batch
+migliore.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+1. primo test [maresunet18-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "maresunet18-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : False
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+--------------------------------------------------------------------------------
+
+2. secondo test [maresunet18-ss-vq]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "maresunet18-ss-vq"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+3. terzo test [maresunet50-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "maresunet50-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : False
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+
+--------------------------------------------------------------------------------
+
+4. quarto test [maresunet50-ss-vq]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "maresunet50-ss-vq"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+5. quinto test [MASWinTNet-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "MASWinTNet-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : False
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+
+--------------------------------------------------------------------------------
+
+6. sesto test [MASWinTNet-vq-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "MASWinTNet-vq-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+7. settimo test [MASWinTNet-nano-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "MASWinTNet-nano-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : False
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+
+--------------------------------------------------------------------------------
+
+8. ottavo test [MASWinTNet-nano-vq-ss]
+
+dentro il file /config/train_pl_ss.yaml modificare :
+
+model : "MASWinTNet-nano-vq-ss"
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+--------------------------------------------------------------------------------

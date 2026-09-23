@@ -1,0 +1,23 @@
+---
+  model : "maresunet18"
+  model_name :
+    - "maresunet18"
+    - "maresunet18-vq"
+    - "maresunet50"
+    - "maresunet50-vq"
+    - "maresunet50-pretrain-EsViT"
+    - "maresunet50-vq-pretrain-EsViT"
+
+  batch_size : 8
+  epochs : 100
+  train_dataset_length : -1   #all entries in the dataset
+  valid_dataset_length : -1   #all entries in the dataset
+  vq_flag : False
+  train_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Postdam/Dataset/Postdam_data/train/train/"
+  valid_data_path : "/content/drive/MyDrive/Colab Notebooks/semantic_labelling/Postdam/Dataset/Postdam_data/validation/"
+  learning_rate : 0.006
+  pretrain : False
+  last_epoch : -1
+  logdir_path : "None"
+  ckpt_path : "None"
+  dataset_name : "Potsdam"

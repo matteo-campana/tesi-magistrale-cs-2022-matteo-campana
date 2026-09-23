@@ -1,0 +1,79 @@
+
+Non e' necessario modificare la batch_size dato che ho implementato il
+fine-tuning con Pytorch lugthening, e trova da sola la dimensione della batch
+migliore.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+1. primo test [maresunet18] gia' eseguito
+
+--------------------------------------------------------------------------------
+
+2. secondo test [maresunet18-vq]
+
+dentro il file /config/train_pl_features_extractor.yaml modificare :
+
+model_features_extractor: maresunet18-vq
+model_semantic_segmentation: maresunet18-ss-vq
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss_dino.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+3. terzo test [maresunet50]
+
+dentro il file /config/train_pl_features_extractor.yaml modificare :
+
+model_features_extractor: maresunet50
+model_semantic_segmentation: maresunet50-ss
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : False
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss_dino.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+--------------------------------------------------------------------------------
+
+4. quarto test [maresunet50-vq]
+
+dentro il file /config/train_pl_features_extractor.yaml modificare :
+
+model_features_extractor: maresunet50-vq
+model_semantic_segmentation: maresunet50-ss-vq
+train_data_path : [dove ha salvato il training set]
+valid_data_path : [dove ha salvato il validation set]
+vq_flag : True
+
+lanciare il comando dalla directory principale della repo
+
+$> cd ./image-segmentation-with-swin-transformers/
+$> python main_pl_ss_dino.py
+
+Segnare la batch size selezionata dal programma su un file .txt,
+copiare e comprimere la directory "pytorch_ligthening_logs/logs"
+dentro una nuova cartella prima di procedere con un nuovo test.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+< ---------------------------------------------------------------------------- >
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
