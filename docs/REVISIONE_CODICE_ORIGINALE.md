@@ -4,16 +4,16 @@ Questa è una ricognizione del codice presente nel repository al momento della r
 capire **come** sono stati prodotti i risultati della tesi ed evitare di **riportare nella nuova
 implementazione** i difetti trovati.
 
-> Il codice originale resta nel repository come riferimento storico, con licenza Apache-2.0 (vedi i file
-> `LICENSE` nelle rispettive cartelle). Il nuovo codice sarà scritto da zero e non ne copierà parti.
+> Il codice originale resta nel repository (in `legacy/`) come riferimento storico, con licenza Apache-2.0 (vedi i file
+> `LICENSE` nelle rispettive cartelle). Il nuovo codice (`src/rsseg/`) è scritto da zero e non ne copia parti.
 
 ## 1. Inventario
 
 | Cartella | Contenuto | Note |
 |---|---|---|
-| `tesi-magistrale-main/` | PDF della tesi (V4), slide (PDF/PPTX), testo della presentazione (PDF/DOCX) | Documento di riferimento |
-| `semantic-segmentation-potsdam-main/` | Versione "ripulita" per Potsdam: `main_pl_ss.py`, `LitAutoEncoder_SS.py`, modelli MAResUNet18/50 (± VQ), metriche, dataset `.npy` | ~2.900 righe, solo fine-tuning supervisionato |
-| `image-segmentation-with-swin-transformers-main/` | Repository di lavoro completo: pre-training DINO (`main_pl_ss_dino.py`, `aux_train/`), modelli Swin/MASWinTNet, VAE/VQ-VAE ResNet, notebook di preparazione dati (Vaihingen), script di lancio | ~14.400 righe, contiene anche esperimenti con Swin Transformer **non riportati nella tesi** |
+| `legacy/tesi-magistrale/` | PDF della tesi (V4), slide (PDF/PPTX), testo della presentazione (PDF/DOCX) | Documento di riferimento |
+| `legacy/semantic-segmentation-potsdam/` | Versione "ripulita" per Potsdam: `main_pl_ss.py`, `LitAutoEncoder_SS.py`, modelli MAResUNet18/50 (± VQ), metriche, dataset `.npy` | ~2.900 righe, solo fine-tuning supervisionato |
+| `legacy/image-segmentation-with-swin-transformers/` | Repository di lavoro completo: pre-training DINO (`main_pl_ss_dino.py`, `aux_train/`), modelli Swin/MASWinTNet, VAE/VQ-VAE ResNet, notebook di preparazione dati (Vaihingen), script di lancio | ~14.400 righe, contiene anche esperimenti con Swin Transformer **non riportati nella tesi** |
 
 Stack originale: Python 3.7, PyTorch 1.10 (cu111), PyTorch Lightning 1.5.8, timm 0.4.12, numba, Google Colab.
 

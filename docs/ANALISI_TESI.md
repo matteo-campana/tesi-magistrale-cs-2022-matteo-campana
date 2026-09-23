@@ -1,8 +1,8 @@
 # Analisi della tesi
 
-> Documento di riferimento: `tesi-magistrale-main/tesi-magistrale-main/Tesi_Matteo_Campana_1692599_V4.pdf`
+> Documento di riferimento: `legacy/tesi-magistrale/Tesi_Matteo_Campana_1692599_V4.pdf`
 > (74 pagine), integrato con il testo della presentazione (`Presentazione Tesi testo.pdf`) e con il codice
-> originale nelle cartelle `image-segmentation-with-swin-transformers-main/` e `semantic-segmentation-potsdam-main/`.
+> originale nelle cartelle `legacy/image-segmentation-with-swin-transformers/` e `legacy/semantic-segmentation-potsdam/`.
 
 ## 1. Scheda
 

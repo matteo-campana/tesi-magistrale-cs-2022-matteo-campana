@@ -1,0 +1,11 @@
+base: ../base.yaml
+name: maresunet_vq_r34_imagenet
+model:
+  arch: resnet34
+  weights: imagenet
+  skip: lam
+  neck: vq
+  vq:
+    num_codes: 512
+    beta: 0.25
+    ema_decay: 0.99

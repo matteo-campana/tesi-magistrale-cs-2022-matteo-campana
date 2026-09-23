@@ -1,108 +1,79 @@
 # Piano di sviluppo
 
-Piano per reimplementare **da zero** il lavoro della tesi in questo repository, secondo
-l'[architettura](ARCHITECTURE.md) prevista. Ogni fase ha deliverable e criteri di completamento verificabili.
-Le fasi 0–2 sono prerequisiti. Le fasi 3 e 4 sono indipendenti tra loro e possono procedere in parallelo.
+Piano per reimplementare **da zero** il lavoro della tesi, secondo l'[architettura](ARCHITECTURE.md): Keras 3 su
+PyTorch, tracking con MLflow, eseguibile su una singola RTX 4060 da 8 GB ([GPU_LOCALE.md](GPU_LOCALE.md)).
 
-## Panoramica
+Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su dati reali/GPU · ⬜ da fare.
 
-```mermaid
-gantt
-    dateFormat  X
-    axisFormat  F%s
-    section Fondamenta
-    F0 Setup repo            :f0, 0, 1
-    F1 Pipeline dati         :f1, after f0, 2
-    section Modelli
-    F2 Baseline MAResU-Net   :f2, after f1, 2
-    F3 Vector Quantization   :f3, after f2, 2
-    F4 Pre-training DINO     :f4, after f2, 3
-    section Ricerca
-    F5 Griglia + ablation    :f5, after f4, 3
-    F6 Report e rilascio     :f6, after f5, 1
-```
-*(le durate sono relative, in "blocchi" di lavoro, non settimane)*
+## Stato sintetico
+
+| Fase | Codice | Esperimenti su Potsdam |
+|---|---|---|
+| F0 Fondamenta | ✅ | — |
+| F1 Pipeline dati | ✅ | 🟡 `rsseg prepare` sul dataset reale |
+| F2 Baseline MAResU-Net | ✅ | 🟡 |
+| F3 Vector Quantization | ✅ | 🟡 ablation |
+| F4 Pre-training DINO | ✅ | 🟡 |
+| F5 Griglia + ablation | ✅ script | ⬜ |
+| F6 Report e rilascio | ⬜ | ⬜ |
 
 ---
 
-## Fase 0: Fondamenta del repository
-**Obiettivo:** un repository pulito e installabile, pronto ad accogliere il codice.
-
-- [ ] Spostare il materiale originale in `legacy/` con `git mv`, così la storia resta intatta. Aggiungere
-      `legacy/README.md` che spiega provenienza e licenza (Apache-2.0).
-- [ ] Rimuovere dal versionamento `__pycache__/`, `.vs/`, `*.pyc` e aggiungere `.gitignore` (inclusi `data/`, `runs/`, `*.ckpt`).
-- [ ] `pyproject.toml` (pacchetto `rsseg`, layout `src/`), ambiente con `uv`, dipendenze minime.
-- [ ] `ruff`, `mypy`, `pytest`, `pre-commit`. CI GitHub Actions (lint, typecheck, test).
-- [ ] Intestazioni SPDX `AGPL-3.0-or-later`, `CITATION.cff`, `CONTRIBUTING.md`.
-
-**Fatto quando:** `uv run pytest` passa in CI su un test segnaposto e `pip install -e .` funziona.
+## Fase 0: Fondamenta
+- ✅ Materiale originale spostato in `legacy/` con `git mv` (storia preservata), `legacy/README.md`
+- ✅ `__pycache__/` e `.vs/` rimossi; `.gitignore` per `data/`, `runs/`, `mlflow.db`, pesi
+- ✅ `pyproject.toml` (pacchetto `rsseg`, layout `src/`, entry point `rsseg`)
+- ✅ `ruff` (lint + format), `pytest`, CI GitHub Actions (Python 3.11/3.12, PyTorch CPU)
+- ✅ Intestazioni SPDX `AGPL-3.0-or-later`, `CITATION.cff`
+- ⬜ `mypy`, `pre-commit`, `CONTRIBUTING.md`
 
 ## Fase 1: Pipeline dati
-**Obiettivo:** dati di Potsdam pronti, split corretti e verificabili.
+- ✅ `classes.py`: LUT vettorizzata, `ignore_index=255`, mapping dall'ordine legacy
+- ✅ `splits.py`: protocolli `standard` e `thesis2022`
+- ✅ `prepare.py`: split per tile → tiling → manifest con istogrammi; statistiche solo sul train
+- ✅ `CropDataset`, `MultiCropDataset`, augmentation congiunte, `label_fraction` per tile
+- ✅ Generatore di tile sintetiche (`rsseg synth`) per test e demo
+- 🟡 Verificare lo split `standard` sulle fonti ufficiali ISPRS/MMSegmentation
+- ⬜ EDA: distribuzione delle classi per tile e split (per documentare perché la tesi aveva rimosso 10 aree)
 
-- [ ] `classes.py` con LUT vettorizzata, `ignore_index=255` e mapping dall'ordine legacy.
-- [ ] `splits.py` con i protocolli `standard` e `thesis2022` (vedi [DATASET.md](DATASET.md)), verificando lo split
-      standard sulle fonti ufficiali.
-- [ ] `prepare.py`: split per tile, poi tiling, poi manifest con istogrammi. Statistiche di normalizzazione.
-- [ ] `CropDataset`, `TileDataset`, augmentation congiunte, `SegDataModule`, `label_fraction`.
-- [ ] Generatore di tile sintetiche per i test e la CI.
-- [ ] Notebook o script di EDA: distribuzione delle classi per tile e per split. Serve anche a documentare perché
-      la tesi aveva rimosso alcune aree.
+## Fase 2: Baseline MAResU-Net (RQ1)
+- ✅ Backbone ResNet18/34/50 in Keras con pesi ImageNet portati da torchvision (equivalenza testata)
+- ✅ LinearPAM + CAM (testati contro la formula della tesi), decoder, varianti `lam`/`plain`
+- ✅ CE che addestra anche clutter; metriche su matrice di confusione globale; valutazione su tile intere
+- ✅ MLflow: parametri, metriche per epoca, VRAM, predizioni, checkpoint, report
+- 🟡 Esperimenti:
+  - `thesis2022_maresunet_r18_imagenet`: confronto diretto con la tab. 4.5 (mIoU 0.604)
+  - `maresunet_r18_imagenet`, `maresunet_r34_imagenet` sul protocollo standard
+  - `unet_r18_imagenet`: senza LAM, per la RQ1
 
-**Fatto quando:** i test sugli invarianti passano (split disgiunti, maschere valide, allineamento) e
-`rsseg prepare` su Potsdam produce un manifest con conteggi coerenti.
-
-## Fase 2: Baseline MAResU-Net
-**Obiettivo:** riprodurre (e correggere) il modello migliore della tesi.
-
-- [ ] `backbones.py` (ResNet18/34/50, pesi ImageNet o file).
-- [ ] `attention.py`: LinearPAM + CAM, con test contro l'implementazione di riferimento della formula.
-- [ ] `decoder.py`, `segmentor.py`, `registry.py` e varianti `plain` (U-Net) e `lam` (MAResU-Net).
-- [ ] `SegmentationModule` con CE, `ignore_index=255` e metriche su matrice di confusione globale.
-- [ ] `eval/sliding_window.py`, `eval/report.py`, `eval/efficiency.py`.
-- [ ] Esperimenti:
-  - MAResU-Net R18/R34 ImageNet, protocollo `thesis2022`: confronto diretto con la tabella 4.5 (mIoU 0.604).
-  - Stesse configurazioni con protocollo `standard`: nuovo riferimento.
-  - U-Net R18 (senza LAM) per la RQ1.
-
-**Fatto quando:** il report mostra risultati su ≥ 3 seed, con Clutter appreso (IoU > 0, a differenza del bug S1),
-e le differenze rispetto alla tesi sono spiegate.
+**Fatto quando:** ci sono risultati su ≥ 3 seed, la classe clutter ha IoU > 0 e le differenze rispetto alla tesi sono spiegate.
 
 ## Fase 3: Vector Quantization (RQ2)
-- [ ] `quantizer.py`: VQ standard ed EMA con stato in buffer, straight-through, dead-code restart,
-      proiezione 1×1 opzionale, statistiche di utilizzo.
-- [ ] Integrazione come `Neck` e (opzionalmente) sulle skip.
-- [ ] Callback di monitoraggio del codebook.
-- [ ] Ablation: `num_codes ∈ {64, 256, 512, 1024}`, `beta ∈ {0.1, 0.25, 1.0}`, peso della VQ loss e posizione
-      (solo bottleneck oppure bottleneck + skip).
+- ✅ `VectorQuantizer`: EMA in variabili, init dai dati, restart dei codici morti, straight-through, perplexity e usage
+- ✅ Neck `vq`, quantizzazione opzionale delle skip (`vq.on_skips`), `CodebookMonitor` su MLflow
+- 🟡 Ablation: `num_codes ∈ {64, 256, 512, 1024}`, `beta ∈ {0.1, 0.25, 1.0}`, `loss_weight`, `on_skips`, `ema_decay=0`
 
-**Fatto quando:** nessun collasso del codebook (perplexity e utilizzo riportati) e confronto con la baseline su ≥ 3 seed.
+  Nei run sintetici il codebook del bottleneck tende a usare pochi codici quando le skip portano già
+  l'informazione. È l'ipotesi "il decoder aggira il bottleneck" e va misurata su Potsdam.
 
 ## Fase 4: Pre-training DINO (RQ3, RQ4)
-- [ ] `ssl/heads.py`, `ssl/loss.py`, `ssl/schedules.py`, `ssl/module.py` fedeli a DINO (vedi ARCHITECTURE §4.3).
-- [ ] Transform multi-crop 2×224 + N×96, variante `aerial_augment`.
-- [ ] Test: la loss non mescola campioni del batch (invarianza a permutazioni coerenti), il teacher non riceve
-      gradienti, l'EMA si comporta secondo lo schedule.
-- [ ] Diagnostica anti-collasso: entropia e deviazione standard delle feature del teacher, k-NN o linear probe su
-      crop etichettati.
-- [ ] Esportazione del backbone e caricamento in `Backbone(weights=...)`.
-- [ ] Esperimenti: fine-tuning con `label_fraction ∈ {0.01, 0.1, 0.25, 1.0}`, confrontando DINO, ImageNet e nessun
-      pre-training, e ImageNet → DINO (pre-training continuato sul dominio).
-
-**Fatto quando:** esiste una curva mIoU vs frazione di etichette per i tre tipi di inizializzazione, con barre d'errore.
+- ✅ Head con `WeightNormDense`, loss per campione, centering, schedule (lr/wd/momentum/τ_t), EMA teacher
+- ✅ Multi-crop 2×224 + N×96, variante `aerial_augment`
+- ✅ `teacher_entropy` (anti-collasso), export del backbone e caricamento in `model.weights`
+- 🟡 Esperimenti: fine-tuning con `label_fraction ∈ {0.01, 0.1, 0.25, 1.0}` × {DINO, ImageNet, nessun pre-training}
+  e `ssl.weights=imagenet` (pre-training continuato sul dominio)
+- ⬜ Linear probe / k-NN sull'encoder congelato come diagnostica aggiuntiva
+- ⬜ Variante densa (loss locale per patch) più adatta alla segmentazione
 
 ## Fase 5: Griglia della tesi e ablation (RQ1–RQ5)
-- [ ] Griglia completa 2 × 2 × 2 (+ R50 opzionale) × 3 seed su protocollo `standard`.
-- [ ] Ablation: LAM vs plain, augmentation vs nessuna augmentation, CE vs CE pesata, `aerial_augment`.
-- [ ] Profilo di efficienza (parametri, GFLOPs a 512², latenza su GPU e CPU).
-- [ ] Analisi qualitativa: figure TOP / GT / predizioni come le figure 4.3–4.4, mappe di errore, confusione Tree↔LowVeg.
-
-**Fatto quando:** `reports/` contiene le tabelle finali generate automaticamente dai run.
+- ✅ `scripts/run_thesis_grid.sh` (2 × 2 × 2 × seed) e `rsseg report` (media ± std)
+- ⬜ Esecuzione della griglia; ablation LAM/plain, augmentation, CE pesata, `aerial_augment`
+- ⬜ Profilo di efficienza con `rsseg benchmark` (parametri, immagini/s, VRAM) per R18/R34/R50
 
 ## Fase 6: Documentazione e rilascio
-- [ ] `docs/RISULTATI.md`: confronto tesi 2022 vs reimplementazione, con risposta a ciascuna RQ.
-- [ ] Model card dei modelli migliori, pesi pubblicati (rispettando le condizioni ISPRS).
-- [ ] Tag `v1.0.0`, `CHANGELOG.md`.
+- ⬜ `docs/RISULTATI.md`: confronto tesi 2022 vs reimplementazione, risposta a ciascuna RQ
+- ⬜ Model card e pesi dei modelli migliori (rispettando le condizioni ISPRS)
+- ⬜ Tag `v1.0.0`, `CHANGELOG.md`
 
 ---
 
@@ -110,22 +81,22 @@ e le differenze rispetto alla tesi sono spiegate.
 
 | Rischio | Mitigazione |
 |---|---|
-| Calcolo limitato (la tesi girava su Colab) | Crop 256/512, mixed precision, backbone R18 di default, pre-training DINO con meno epoche e crop più piccoli, preemption-safe checkpoint |
-| Lo split standard non coincide con fonti diverse | Split come dato di configurazione, verificato e citato. Il protocollo della tesi resta disponibile |
-| DINO collassa su pochi dati | Diagnostica anti-collasso, iperparametri da letteratura, partenza da ImageNet |
-| Risultati di nuovo negativi | È comunque un risultato: con protocollo corretto e più seed la conclusione diventa solida |
-| Deriva dallo scopo originale | Ogni aggiunta va collegata a una RQ di [ANALISI_TESI.md §7](ANALISI_TESI.md#7-domande-di-ricerca-da-preservare-nella-reimplementazione) |
+| 8 GB di VRAM | bf16, accumulo del gradiente, crop 512, `rsseg benchmark` prima dei run lunghi, leve documentate in GPU_LOCALE §4 |
+| Channels-last di Keras su backend PyTorch (trasposizioni interne alle conv) | Costo accettabile. Se il profilo lo indica, si può valutare `image_data_format=channels_first`. |
+| Lo split standard non coincide con altre fonti | Lo split è un dato di configurazione, verificato e citato. Il protocollo della tesi resta disponibile. |
+| DINO collassa con pochi dati | `teacher_entropy`, warmup, partenza da ImageNet |
+| Risultati di nuovo negativi | Con protocollo corretto e più seed, anche un risultato negativo diventa una conclusione solida |
 
 ## Tracciabilità tesi → codice
 
-| Concetto nella tesi | Sezione | Modulo previsto |
+| Concetto nella tesi | Sezione | Codice |
 |---|---|---|
 | Linear Attention Mechanism | §2.5 | `rsseg.models.attention.LinearPAM` |
-| MAResU-Net | §2.6 | `rsseg.models.segmentor` + `decoder` |
-| VQ-VAE codebook e loss | §2.4, §4.2.1 | `rsseg.models.quantizer` |
-| Self-distillation, EMA teacher | §3 | `rsseg.ssl.module` |
-| DINO loss e multi-crop | §3.2, §4.2.1 | `rsseg.ssl.loss`, `rsseg.data.transforms` |
-| Dataset Potsdam, pre-processing | §4.1 | `rsseg.data.prepare`, `splits` |
-| mIoU, pixel accuracy, F1 | §4.2.2 | `rsseg.eval.metrics` |
+| MAResU-Net | §2.6 | `rsseg.models.segmentor.build_segmentor` (`skip: lam`) |
+| VQ-VAE codebook e loss | §2.4, §4.2.1 | `rsseg.models.quantizer.VectorQuantizer` |
+| Self-distillation, teacher EMA | §3 | `rsseg.ssl.dino.DINOModel` |
+| DINO loss e multi-crop | §3.2, §4.2.1 | `rsseg.ssl.dino.dino_loss`, `rsseg.data.transforms.MultiCropAugment` |
+| Dataset Potsdam, pre-processing | §4.1 | `rsseg.data.prepare`, `rsseg.data.splits` |
+| mIoU, pixel accuracy, F1 | §4.2.2 | `rsseg.train.metrics` |
 | Tabelle dei risultati | §4.3 | `rsseg.eval.report` |
-| Efficienza energetica | cap. 5 | `rsseg.eval.efficiency` |
+| Efficienza energetica | cap. 5 | `rsseg.eval.benchmark` |

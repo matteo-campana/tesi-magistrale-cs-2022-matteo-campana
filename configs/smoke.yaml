@@ -1,0 +1,39 @@
+# Tiny end-to-end run on synthetic tiles (CPU-friendly, ~1-2 minutes):
+#   rsseg synth --out data/synthetic_raw --size 256
+#   rsseg prepare -c configs/smoke.yaml && rsseg train -c configs/smoke.yaml
+base: base.yaml
+name: smoke
+data:
+  raw_dir: data/synthetic_raw
+  root: data/synthetic
+  crop_size: 128
+  train_stride: 128
+  num_workers: 0
+  prepare_workers: 1
+model:
+  weights: none
+train:
+  epochs: 2
+  batch_size: 4
+  grad_accum_steps: 1
+  steps_per_epoch: 4
+  validation_steps: 2
+  log_images_every: 1
+  precision: float32
+eval:
+  window: 128
+  stride: 64
+  batch_size: 4
+  max_tiles: 2
+ssl:
+  epochs: 1
+  batch_size: 4
+  steps_per_epoch: 2
+  global_crop_size: 96
+  local_crop_size: 64
+  local_crops_number: 2
+  out_dim: 256
+  hidden_dim: 128
+  bottleneck_dim: 64
+  precision: float32
+  export_path: runs/smoke_backbone.weights.h5

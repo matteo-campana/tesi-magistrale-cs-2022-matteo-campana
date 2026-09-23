@@ -1,0 +1,7 @@
+base: ../base.yaml
+name: unet_r18_imagenet
+model:
+  arch: resnet18
+  weights: imagenet
+  skip: plain
+  neck: identity

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rsseg"
+version = "0.1.0"
+description = "Semantic segmentation of very-high-resolution aerial images (ISPRS Potsdam) with MAResU-Net, vector quantization and DINO pre-training — Keras 3 on PyTorch."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Matteo Campana" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "keras>=3.5",
+    "torch>=2.3",
+    "torchvision>=0.18",
+    "mlflow>=2.14",
+    "numpy>=1.26",
+    "pillow>=10.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+rsseg = "rsseg.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rsseg"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]

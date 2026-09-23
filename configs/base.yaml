@@ -1,0 +1,49 @@
+# Default configuration, sized for a single 8 GB GPU (e.g. NVIDIA RTX 4060 Laptop/Desktop).
+# Every experiment file inherits from this one with `base: ../base.yaml`.
+name: base
+output_dir: runs
+
+data:
+  raw_dir: null            # e.g. /data/ISPRS/Potsdam  (needed only by `rsseg prepare`)
+  root: data/potsdam       # output of `rsseg prepare`
+  protocol: standard       # standard | thesis2022
+  crop_size: 512
+  train_stride: 512
+  label_fraction: 1.0
+  augment: true
+  num_workers: 4
+  prepare_workers: 4
+
+model:
+  arch: resnet18
+  weights: imagenet
+  skip: lam                # MAResU-Net attention skips
+  neck: identity
+
+train:
+  epochs: 100
+  batch_size: 8            # 8 x 512² fits in 8 GB with bf16; check with `rsseg benchmark`
+  grad_accum_steps: 4      # effective batch 32, as in the thesis
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.0001
+  scheduler: step          # StepLR(15, 0.4) as in the thesis
+  step_size: 15
+  gamma: 0.4
+  precision: mixed_bfloat16
+
+eval:
+  split: test
+  window: 512
+  stride: 256
+  batch_size: 8
+
+ssl:
+  arch: resnet18
+  weights: none
+  epochs: 100
+  batch_size: 32           # 2x224 + 6x96 views per image
+  precision: mixed_bfloat16
+
+tracking:
+  experiment: rsseg

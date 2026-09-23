@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      KERAS_BACKEND: torch
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install (CPU PyTorch)
+        run: |
+          uv venv
+          uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          uv pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          uv run --no-sync ruff check src tests
+          uv run --no-sync ruff format --check src tests
+      - name: Tests
+        run: uv run --no-sync pytest -q
