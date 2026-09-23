@@ -8,10 +8,29 @@ from keras import ops
 
 from rsseg.config import ModelConfig, VQConfig
 from rsseg.models.attention import ChannelAttention, LinearPAM, linear_pam_reference
-from rsseg.models.backbones import IMAGENET_MEAN, IMAGENET_STD, build_resnet, feature_channels
+from rsseg.models.backbones import (
+    BACKBONES,
+    IMAGENET_MEAN,
+    IMAGENET_STD,
+    build_backbone,
+    build_resnet,
+    feature_channels,
+)
 from rsseg.models.quantizer import VectorQuantizer, find_quantizers
 from rsseg.models.segmentor import build_segmentor
-from rsseg.models.torchvision_weights import port_resnet_state_dict
+from rsseg.models.torchvision_weights import (
+    port_resnet_state_dict,
+    port_swin_state_dict,
+    port_vit_state_dict,
+)
+from rsseg.models.transformers import (
+    DropPath,
+    SwinSpec,
+    ViTSpec,
+    build_swin,
+    build_vit,
+    vit_feature_channels,
+)
 
 
 def _np(x):
@@ -140,3 +159,86 @@ def test_mixed_precision_logits_are_float32():
     model = build_segmentor(ModelConfig(weights="none"))
     out = model(np.zeros((1, 64, 64, 3), np.float32))
     assert out.dtype == torch.float32
+
+
+def _torch_input(x):
+    return (
+        (torch.tensor(x) / 255 - torch.tensor(IMAGENET_MEAN)) / torch.tensor(IMAGENET_STD)
+    ).permute(0, 3, 1, 2)
+
+
+@pytest.mark.parametrize("size", [(64, 96), (64, 16), (224, 224)])
+def test_swin_matches_torchvision(size):
+    """Padding, shifted windows (also along one axis only) and patch merging as in torchvision."""
+    torch.manual_seed(0)
+    net = torchvision.models.SwinTransformer([4, 4], 24, [2, 2, 2, 2], [1, 2, 2, 4], [7, 7]).eval()
+    with torch.no_grad():
+        for name, t in net.state_dict().items():
+            if "relative_position_bias_table" in name:
+                t.normal_()
+    model = build_swin(SwinSpec(24, (2, 2, 2, 2), (1, 2, 2, 4)))
+    port_swin_state_dict(model, net.state_dict())
+
+    x = np.random.default_rng(0).uniform(0, 255, (2, *size, 3)).astype(np.float32)
+    with torch.no_grad():
+        f, expected = _torch_input(x), []
+        for i, layer in enumerate(net.features):
+            f = layer(f)
+            if i in (1, 3, 5):
+                expected.append(torch.nn.functional.layer_norm(f, f.shape[-1:]).numpy())
+        expected.append(net.norm(f).numpy())
+    for got, exp in zip(model(x, training=False), expected, strict=True):
+        np.testing.assert_allclose(_np(got), exp, rtol=1e-4, atol=1e-4)
+
+
+def test_vit_matches_torchvision_and_interpolates_positions():
+    torch.manual_seed(0)
+    net = torchvision.models.VisionTransformer(32, 16, 4, 2, 16, 32).eval()
+    spec = ViTSpec(16, 4, 2, mlp_dim=32, image_size=32)
+    model = build_vit(spec)
+    port_vit_state_dict(model, net.state_dict())
+
+    x = np.random.default_rng(0).uniform(0, 255, (2, 32, 32, 3)).astype(np.float32)
+    with torch.no_grad():
+        expected = net.encoder(
+            torch.cat([net.class_token.expand(2, -1, -1), net._process_input(_torch_input(x))], 1)
+        )[:, 1:]
+    encoder = keras.Model(model.input, model.get_layer("out_norm4").output)
+    np.testing.assert_allclose(
+        _np(encoder(x)).reshape(2, 4, 16), expected.numpy(), rtol=1e-4, atol=1e-4
+    )
+
+    shapes = [tuple(f.shape) for f in model(np.zeros((1, 64, 96, 3), np.float32))]
+    c = vit_feature_channels(spec)
+    assert shapes == [(1, 16, 24, c[0]), (1, 8, 12, c[1]), (1, 4, 6, c[2]), (1, 2, 3, c[3])]
+
+
+def test_backbone_registry():
+    for arch in BACKBONES:
+        assert len(feature_channels(arch)) == 4
+    assert feature_channels("swin_t") == [96, 192, 384, 768]
+    assert feature_channels("vit_b_16") == [192, 384, 768, 768]
+    with pytest.raises(ValueError, match="unknown arch"):
+        build_backbone("resnet101", "none")
+    with pytest.raises(ValueError, match="no ImageNet weights"):
+        build_backbone("vit_s_16", "imagenet")
+
+
+@pytest.mark.parametrize("arch", ["swin_t", "vit_s_16"])
+def test_transformer_segmentor_trains(arch):
+    model = build_segmentor(ModelConfig(arch=arch, weights="none", drop_path=0.1))
+    x = np.random.default_rng(0).uniform(0, 255, (2, 64, 64, 3)).astype(np.float32)
+    out = model(x, training=True)
+    assert tuple(out.shape) == (2, 64, 64, 6)
+    out.float().mean().backward()
+    encoder = model.get_layer(f"{arch}_backbone")
+    assert all(w.value.grad is not None for w in encoder.trainable_weights)
+    # stochastic depth is active only in training
+    np.testing.assert_allclose(_np(model(x[:1])), _np(model(x[:1])))
+
+
+def test_drop_path_scales_kept_samples():
+    layer = DropPath(0.5, seed=0)
+    out = _np(layer(np.ones((64, 3, 3, 2), np.float32), training=True))
+    kept = out.reshape(64, -1)
+    assert set(np.unique(kept)) <= {0.0, 2.0} and (kept == kept[:, :1]).all()

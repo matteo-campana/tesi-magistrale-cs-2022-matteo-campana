@@ -13,9 +13,11 @@ import numpy as np
 from rsseg.config import ExperimentConfig
 from rsseg.data.datasets import MultiCropDataset, make_loader, read_crops
 from rsseg.data.transforms import MultiCropAugment
+from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.runtime import setup_runtime
 from rsseg.ssl.dino import DINOModel
 from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
+from rsseg.train.callbacks import RichProgressBar
 from rsseg.train.seg_train import make_run_dir
 
 log = logging.getLogger(__name__)
@@ -59,7 +61,7 @@ def pretrain_dino(cfg: ExperimentConfig) -> dict:
     optimizer = keras.optimizers.AdamW(
         learning_rate=0.0, weight_decay=s.weight_decay, global_clipnorm=s.clip_grad or None
     )
-    optimizer.exclude_from_weight_decay(var_names=["bias", "gamma", "beta"])
+    optimizer.exclude_from_weight_decay(var_names=["bias", "gamma", "beta", *NO_WEIGHT_DECAY])
     model.compile(optimizer=optimizer)
 
     ref_globals = np.asarray(next(iter(loader))[0][:8])
@@ -82,9 +84,10 @@ def pretrain_dino(cfg: ExperimentConfig) -> dict:
                 GPUMemoryLogger(),
                 keras.callbacks.CSVLogger(str(run_dir / "history.csv")),
                 MLflowMetricsLogger(),
+                RichProgressBar(keys=("loss", "lr", "teacher_temp")),
             ],
             shuffle=False,  # the DataLoader already shuffles
-            verbose=2,
+            verbose=0,  # progress is shown by RichProgressBar
         )
         model.student_backbone.save_weights(export_path)
         mlflow.log_artifact(export_path, artifact_path="backbone")
