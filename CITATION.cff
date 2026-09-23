@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "Se usi questo software, per favore cita la tesi indicata qui sotto."
+title: "Semantic Segmentation for Remote Sensing Images"
+type: software
+license: AGPL-3.0-or-later
+authors:
+  - family-names: Campana
+    given-names: Matteo
+keywords:
+  - semantic segmentation
+  - remote sensing
+  - ISPRS Potsdam
+  - linear attention
+  - vector quantization
+  - self-supervised learning
+  - DINO
+preferred-citation:
+  type: thesis
+  thesis-type: "Master's thesis"
+  title: "Semantic Segmentation for Remote Sensing Images"
+  authors:
+    - family-names: Campana
+      given-names: Matteo
+  institution:
+    name: "Sapienza Università di Roma"
+  department: "Facoltà di Ingegneria dell'Informazione, Informatica e Statistica"
+  year: 2022
