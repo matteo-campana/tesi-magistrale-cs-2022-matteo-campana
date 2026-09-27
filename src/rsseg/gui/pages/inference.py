@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rsseg.gui import actions
+from rsseg.gui import actions, theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import help as helptext
 from rsseg.gui.core.jobs import Job
@@ -44,6 +44,7 @@ from rsseg.gui.widgets import (
     ImageView,
     JobProgressWidget,
     SyncedViews,
+    action_button,
     bar_chart,
     class_colors,
     colorize,
@@ -99,6 +100,9 @@ class InferencePage(QWidget):
         model_box = QGroupBox("1. Modello")
         mf = QFormLayout(model_box)
         self.model = QComboBox()
+        # Long run names are elided rather than widening the panel (the tooltip has them in full).
+        self.model.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.model.setMinimumContentsLength(24)
         self.model.currentIndexChanged.connect(self._on_model)
         self.model_info = QLabel()
         self.model_info.setWordWrap(True)
@@ -129,7 +133,8 @@ class InferencePage(QWidget):
         add_files.clicked.connect(self._add_files)
         add_dir = QPushButton("Aggiungi cartella…")
         add_dir.clicked.connect(self._add_dir)
-        clear = QPushButton("Svuota")
+        clear = QPushButton("Svuota elenco")
+        clear.setObjectName("quiet")
         clear.clicked.connect(self.files.clear)
         self.ndsm_files = QListWidget()
         self.ndsm_files.setMaximumHeight(60)
@@ -143,9 +148,10 @@ class InferencePage(QWidget):
         iv.addWidget(self.mode_files)
         iv.addWidget(self.files)
         row = QHBoxLayout()
-        for b in (add_files, add_dir, clear):
+        for b in (add_files, add_dir):
             row.addWidget(b)
         iv.addLayout(row)
+        iv.addWidget(clear, alignment=Qt.AlignRight)
         self.ndsm_label = QLabel("nDSM (solo modelli a 4 canali):")
         iv.addWidget(self.ndsm_label)
         iv.addWidget(self.ndsm_files)
@@ -169,7 +175,7 @@ class InferencePage(QWidget):
         pf.addRow("Batch:", self.batch)
         pf.addRow(self.tta)
         pf.addRow("Uscita:", self.out)
-        run = QPushButton("▶ Esegui inferenza")
+        run = action_button("Esegui inferenza", "play", "primary")
         run.clicked.connect(self.run)
         pf.addRow(run)
         sv.addWidget(params)
@@ -180,7 +186,8 @@ class InferencePage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(setup)
-        scroll.setMinimumWidth(380)
+        scroll.setMinimumWidth(theme.em(scroll, 50))
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # the fields shrink instead
 
         # ------------------------------------------------------------------ viewer
         viewer = QWidget()
@@ -260,7 +267,7 @@ class InferencePage(QWidget):
         split = QSplitter()
         split.addWidget(scroll)
         split.addWidget(viewer)
-        split.setSizes([400, 1000])
+        split.setSizes([theme.em(self, 56), 1000])
         v = QVBoxLayout(self)
         v.addWidget(section_title("Inferenza con i modelli addestrati"))
         v.addWidget(split, 1)
@@ -307,7 +314,9 @@ class InferencePage(QWidget):
             return
         for label, path in run.checkpoints():
             self.checkpoint.addItem(label, str(path))
-        self.model_info.setText(self._run_tooltip(run).replace("<qt>", "").replace("</qt>", ""))
+        # A zero-width space after each "/" lets a long run folder wrap instead of widening the panel.
+        info = self._run_tooltip(run).replace("<qt>", "").replace("</qt>", "")
+        self.model_info.setText(info.replace(str(run.path), str(run.path).replace("/", "/\u200b")))
         ev = run.config.get("eval") or {}
         self.window.setValue(int(ev.get("window") or 512))
         self.stride.setValue(int(ev.get("stride") or 256))
@@ -498,8 +507,8 @@ class InferencePage(QWidget):
             parts.append(f"confidenza {a['conf'][y, x] / 255:.2f}")
         if a.get("gt") is not None:
             ok = a["gt"][y, x] == pred[y, x]
-            parts.append(f"vera: <b style='color:{'#1e8449' if ok else '#c0392b'}'>"
-                         f"{name(int(a['gt'][y, x]))}</b>")  # fmt: skip
+            parts.append("vera: " + theme.span(name(int(a["gt"][y, x])),
+                                                "success" if ok else "danger", bold=True))  # fmt: skip
         if a.get("other") is not None:
             parts.append(f"modello B: <b>{name(int(a['other'][y, x]))}</b>")
         self.pixel.setText(" · ".join(parts))

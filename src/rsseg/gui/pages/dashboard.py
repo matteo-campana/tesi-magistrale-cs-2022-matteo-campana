@@ -19,12 +19,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rsseg.gui import actions
+from rsseg.gui import actions, theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import gpu as gpucore
 from rsseg.gui.core.runs import find_runs
 from rsseg.gui.core.timing import fmt_duration
-from rsseg.gui.widgets import LEVEL_COLORS, JobProgressWidget, gpu_line, section_title
+from rsseg.gui.widgets import LEVEL_TONES, JobProgressWidget, action_button, gpu_line, section_title
 from rsseg.runstate import find_resumable, read_state
 
 
@@ -60,7 +60,10 @@ class DashboardPage(QWidget):
         body = QWidget()
         scroll.setWidget(body)
         v = QVBoxLayout(body)
-        v.addWidget(section_title(f"Progetto: {ctx.root}"))
+        v.setSpacing(theme.Space.MD)
+        title = section_title(f"Progetto: {ctx.root.name}")
+        title.setToolTip(str(ctx.root))
+        v.addWidget(title)
 
         self.gpu_box = QGroupBox("GPU")
         gv = QHBoxLayout(self.gpu_box)
@@ -83,6 +86,8 @@ class DashboardPage(QWidget):
         self.resume_box.setToolTip("Run in pausa o terminati in modo anomalo con un checkpoint di "
                                    "ripresa: ripartono esattamente da dove si erano fermati.")  # fmt: skip
         self.resume_layout = QGridLayout(self.resume_box)
+        self.resume_layout.setColumnStretch(0, 1)
+        self.resume_layout.setVerticalSpacing(theme.Space.LG)
         v.addWidget(self.resume_box)
 
         row = QHBoxLayout()
@@ -101,8 +106,11 @@ class DashboardPage(QWidget):
         for text, page in (("Nuovo training…", "config"), ("Prepara dati…", "data"),
                            ("Campagne…", "campaigns"), ("Inferenza…", "inference")):  # fmt: skip
             b = QPushButton(text)
+            if page == "config":
+                b.setObjectName("primary")
             b.clicked.connect(lambda _=False, p=page: self.open_page.emit(p))
             quick.addWidget(b)
+        quick.addStretch(1)
         v.addLayout(quick)
         v.addStretch(1)
 
@@ -120,8 +128,13 @@ class DashboardPage(QWidget):
     def refresh_gpu(self) -> None:
         level, message = gpucore.status(self.ctx.samples, self.ctx.torch_info)
         line = gpu_line(self.ctx.sample) if self.ctx.sample else ""
-        self.gpu_label.setText(f"<span style='color:{LEVEL_COLORS[level]}; font-size:16px'>●</span> "
-                               f"{message.splitlines()[0]}<br>{line}")  # fmt: skip
+        dot = f"<span style='color:{theme.fill(LEVEL_TONES[level])}; font-size:16px'>●</span>"
+        self.gpu_label.setText(f"{dot} {message.splitlines()[0]}<br>"
+                               f"{theme.span(line, 'neutral')}")  # fmt: skip
+
+    def retheme(self) -> None:
+        self.refresh_gpu()
+        self.refresh_slow()
 
     def refresh_jobs(self) -> None:
         active = [j for j in self.ctx.store.ordered() if j.active]
@@ -203,9 +216,9 @@ class DashboardPage(QWidget):
         return f"{where} · {reason} del {when} · lavoro svolto {fmt_duration(s.get('active_s'))}"
 
     def _resume_row(self, row: int, title: str, detail: str, callback) -> None:
-        label = QLabel(f"<b>{title}</b><br><span style='color:#555'>{detail}</span>")
+        label = QLabel(f"<b>{title}</b><br>{theme.span(detail, 'neutral')}")
         label.setTextFormat(Qt.RichText)
-        button = QPushButton("▶ Riprendi")
+        button = action_button("Riprendi", "play")
         button.clicked.connect(callback)
         self.resume_layout.addWidget(label, row, 0)
         self.resume_layout.addWidget(button, row, 1)

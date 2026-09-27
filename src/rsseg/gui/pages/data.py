@@ -33,7 +33,15 @@ from rsseg.gui.context import AppContext
 from rsseg.gui.core.jobs import Job
 from rsseg.gui.pages.config import list_configs
 from rsseg.gui.pages.dashboard import prepared_datasets
-from rsseg.gui.widgets import ClassLegend, ImageView, colorize, load_array, section_title, tip
+from rsseg.gui.widgets import (
+    ClassLegend,
+    ImageView,
+    action_button,
+    colorize,
+    load_array,
+    section_title,
+    tip,
+)
 
 INSPECTION_COLUMNS = ["tile", "split", "size", "label", "eroded", "ndsm", "off_palette", "notes"]
 
@@ -41,8 +49,8 @@ INSPECTION_COLUMNS = ["tile", "split", "size", "label", "eroded", "ndsm", "off_p
 def _path_row(edit: QLineEdit, parent: QWidget, directory: bool = True) -> QHBoxLayout:
     row = QHBoxLayout()
     row.addWidget(edit, 1)
-    b = QPushButton("…")
-    b.setMaximumWidth(30)
+    b = action_button("Sfoglia…", "folder")
+    b.setToolTip("Scegli la cartella" if directory else "Scegli il file")
 
     def pick():
         path = (QFileDialog.getExistingDirectory(parent, "Cartella", edit.text() or ".") if directory
@@ -110,6 +118,7 @@ class DataPage(QWidget):
         check = tip(QPushButton("1. Verifica (dry-run)"), "options", "prepare.dry_run")
         check.clicked.connect(lambda: self._prepare(dry=True))
         run = QPushButton("2. Prepara")
+        run.setObjectName("primary")
         run.setToolTip("Taglia le tile in crop e maschere, calcola statistiche e manifest")
         run.clicked.connect(lambda: self._prepare(dry=False))
         row.addWidget(check)

@@ -7,6 +7,7 @@ import json
 import time
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -22,17 +23,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rsseg.gui import actions
+from rsseg.gui import actions, theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core.gpu import GPULog
 from rsseg.gui.core.jobs import Job
 from rsseg.gui.core.timing import fmt_duration, fmt_range
 from rsseg.gui.widgets import (
-    STATE_COLORS,
+    STATE_TONES,
     JobProgressWidget,
+    action_button,
     plot_series,
     plot_widget,
     section_title,
+    set_plot_title,
 )
 
 COLUMNS = ["Stato", "Job", "Avanzamento", "Trascorso", "Rimanente", "Creato"]
@@ -54,9 +57,11 @@ class JobsPage(QWidget):
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for col, width in ((0, 120), (2, 95), (3, 85), (4, 150), (5, 95)):
-            self.table.setColumnWidth(col, width)
+        self.table.setShowGrid(False)
+        header = self.table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)  # every column fits its values
+        header.setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_select)
         self.table.horizontalHeaderItem(2).setToolTip("Avanzamento complessivo del job")
         self.table.horizontalHeaderItem(3).setToolTip("Tempo di lavoro, pause escluse")
@@ -64,17 +69,21 @@ class JobsPage(QWidget):
         lv.addWidget(self.table)
         buttons = QHBoxLayout()
         self.remove_btn = QPushButton("Rimuovi dalla lista")
+        self.remove_btn.setObjectName("quiet")
         self.remove_btn.setToolTip("Toglie il job dalla lista (i file del run restano)")
         self.remove_btn.clicked.connect(self._remove)
         self.kill_btn = QPushButton("Termina forzatamente")
+        self.kill_btn.setObjectName("danger")
         self.kill_btn.setToolTip("Da usare solo se il job non risponde a Stop: termina il processo "
                                  "senza salvare nulla")  # fmt: skip
         self.kill_btn.clicked.connect(self._kill)
-        self.folder_btn = QPushButton("Apri cartella")
+        self.folder_btn = action_button("Apri cartella", "folder")
         self.folder_btn.setToolTip("Apre la cartella del run (o del job)")
         self.folder_btn.clicked.connect(self._open_folder)
-        for b in (self.remove_btn, self.kill_btn, self.folder_btn):
-            buttons.addWidget(b)
+        buttons.addWidget(self.remove_btn)
+        buttons.addWidget(self.kill_btn)
+        buttons.addStretch(1)
+        buttons.addWidget(self.folder_btn)
         lv.addLayout(buttons)
 
         right = QWidget()
@@ -104,14 +113,14 @@ class JobsPage(QWidget):
         self.command = QLabel()
         self.command.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.command.setWordWrap(True)
-        self.command.setStyleSheet("color:#777; font-family: monospace;")
+        self.command.setObjectName("mono")
         rv.addWidget(self.tabs, 1)
         rv.addWidget(self.command)
 
         split = QSplitter()
         split.addWidget(left)
         split.addWidget(right)
-        split.setSizes([560, 800])
+        split.setSizes([720, 680])
         layout = QVBoxLayout(self)
         layout.addWidget(split)
         ctx.jobs_changed.connect(self.refresh)
@@ -141,14 +150,16 @@ class JobsPage(QWidget):
                     self.table.setItem(row, col, item)
                 item.setText(text)
                 item.setData(Qt.UserRole, job.id)
-            self.table.item(row, 0).setForeground(Qt.white)
-            from PySide6.QtGui import QColor
-
-            self.table.item(row, 0).setBackground(QColor(STATE_COLORS.get(job.state, "#555")))
+            fg, bg = theme.tone_colors(theme.palette(), STATE_TONES.get(job.state, "neutral"))
+            self.table.item(row, 0).setForeground(QColor(fg))
+            self.table.item(row, 0).setBackground(QColor(bg))
             self.table.item(row, 1).setToolTip(" ".join(self.ctx.store.command_line(job)[2:]))
         if self.selected is None and jobs:
             self.select(jobs[0].id)
         self._show_selected()
+
+    def retheme(self) -> None:
+        self.refresh()
 
     def select(self, job_id: str) -> None:
         self.selected = job_id
@@ -217,7 +228,8 @@ class JobsPage(QWidget):
                  "teacher_entropy": "entropia teacher"}  # fmt: skip
         plot_series(self.metric_plot, {names[k]: (x, [h.get(k) for h in history]) for k in keys},
                     markers)  # fmt: skip
-        self.metric_plot.setTitle("Entropia del teacher" if keys == ["teacher_entropy"] else "mIoU")
+        set_plot_title(self.metric_plot,
+                       "Entropia del teacher" if keys == ["teacher_entropy"] else "mIoU")  # fmt: skip
 
     def _gpu(self, job: Job) -> None:
         rows = GPULog(self.ctx.store.folder(job) / "gpu_log.csv").read()

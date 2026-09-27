@@ -32,7 +32,7 @@ from rsseg.gui import actions
 from rsseg.gui.context import AppContext
 from rsseg.gui.core.jobs import Job
 from rsseg.gui.core.timing import fmt_duration
-from rsseg.gui.widgets import JobProgressWidget, section_title, tip
+from rsseg.gui.widgets import JobProgressWidget, action_button, section_title, tip
 
 STEP_STATES = {"done": "completato", "failed": "fallito", "blocked": "bloccato",
                "running": "in esecuzione", "paused": "in pausa", "stopped": "interrotto",
@@ -82,7 +82,7 @@ class CampaignsPage(QWidget):
         row = QHBoxLayout()
         plan = tip(QPushButton("Piano (dry-run)"), "options", "campaign.dry_run")
         plan.clicked.connect(lambda: self._run(dry=True))
-        start = QPushButton("▶ Avvia / riprendi")
+        start = action_button("Avvia / riprendi", "play", "primary")
         start.setToolTip("Esegue i passi non ancora completati; un passo in pausa riparte dal suo "
                          "checkpoint. I passi girano uno alla volta sulla GPU.")  # fmt: skip
         start.clicked.connect(lambda: self._run(dry=False))

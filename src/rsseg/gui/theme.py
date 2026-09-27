@@ -22,13 +22,14 @@ they never change with the theme, and neither do the exported figures.
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSettings, QSize, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QIcon, QImage, QPainter, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QAbstractButton, QApplication, QWidget
 
 # ── spacing / radius scale ────────────────────────────────────────────────────────────────
 #
@@ -181,6 +182,27 @@ def tone_colors(palette: Palette, tone: str) -> tuple[str, str]:
     return getattr(palette, fg_attr), getattr(palette, bg_attr)
 
 
+# Categorical colours for chart series: the reference palette of the data-viz method, eight hues
+# in a fixed order, stepped separately for each surface. Validated with its
+# ``validate_palette.js`` against `surface`: lightness band, chroma, colour-blind separation
+# of adjacent series (ΔE ≥ 8) and normal vision (ΔE ≥ 19). On white three slots fall below
+# 3:1, which is allowed because every chart has a legend. Status colours are not reused here.
+SERIES = {
+    "light": ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"),
+    "dark": ("#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"),
+}  # fmt: skip
+
+# Tone name -> fill attribute, for marks rather than text: progress chunks, dots, heatmap cells.
+FILLS = {
+    "neutral": "border_strong",
+    "accent": "accent",
+    "success": "success",
+    "warning": "warning",
+    "danger": "danger",
+    "info": "info",
+}
+
+
 # ── current palette and the saved choice ──────────────────────────────────────────────────
 
 _current: Palette = DEFAULT
@@ -194,6 +216,18 @@ def palette() -> Palette:
     return _current
 
 
+@contextmanager
+def using(p: Palette) -> Iterator[Palette]:
+    """Draw with `p` for a moment without restyling the app: exported charts are always light,
+    whatever the theme on screen, so they can go straight into the thesis."""
+    global _current
+    previous, _current = _current, p
+    try:
+        yield p
+    finally:
+        _current = previous
+
+
 def saved_palette(settings: QSettings | None = None) -> Palette:
     """The theme chosen last time, dark when nothing (or something unknown) was saved."""
     settings = settings or QSettings("rsseg", "rsseg-gui")
@@ -203,6 +237,88 @@ def saved_palette(settings: QSettings | None = None) -> Palette:
 def save_palette(p: Palette, settings: QSettings | None = None) -> None:
     settings = settings or QSettings("rsseg", "rsseg-gui")
     settings.setValue(SETTINGS_KEY, p.name)
+
+
+def series_colors() -> tuple[str, ...]:
+    """The chart series colours for the current palette, in their fixed order."""
+    return SERIES[_current.name]
+
+
+def fg(tone: str) -> str:
+    """Text colour of a tone in the current palette (clears 4.5:1 on `surface`)."""
+    return tone_colors(_current, tone)[0]
+
+
+def fill(tone: str) -> str:
+    """Fill colour of a tone in the current palette, for marks that are not text."""
+    return getattr(_current, FILLS.get(tone, "border_strong"))
+
+
+def bar_chunk(p: Palette, tone: str = "accent") -> str:
+    """The filled part of a progress bar with text on it.
+
+    A progress bar prints its text across both the filled and the empty part, so the fill is
+    the tone's colour softened towards the groove (dark) or white (light) until `text` clears
+    4.5:1 on it as well; the vivid fill would leave the percentage unreadable.
+    """
+    base = getattr(p, FILLS.get(tone, "accent"))
+    return mix(base, p.surface_alt, 0.55) if p.is_dark else mix(base, "#FFFFFF", 0.3)
+
+
+def mix(a: str, b: str, t: float) -> str:
+    """``a`` blended towards ``b`` by ``t`` (0…1), as hex."""
+    ca, cb = QColor(a), QColor(b)
+    t = min(max(t, 0.0), 1.0)
+    return QColor(
+        round(ca.red() + (cb.red() - ca.red()) * t),
+        round(ca.green() + (cb.green() - ca.green()) * t),
+        round(ca.blue() + (cb.blue() - ca.blue()) * t),
+    ).name()
+
+
+def span(text: str, tone: str, bold: bool = False) -> str:
+    """``text`` as rich text in the colour of ``tone``."""
+    tag = "b" if bold else "span"
+    return f"<{tag} style='color:{fg(tone)}'>{text}</{tag}>"
+
+
+def set_tone(widget: QWidget, tone: str | None) -> None:
+    """Set the dynamic ``tone`` property that the stylesheet keys on, and re-polish."""
+    if widget.property("tone") == tone:
+        return
+    widget.setProperty("tone", tone)
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def set_action_icon(button: QAbstractButton, name: str) -> None:
+    """Give ``button`` the drawn icon ``name``; it is redrawn when the theme changes."""
+    button.setProperty("actionIcon", name)
+    _paint_action_icon(button)
+
+
+def _paint_action_icon(button: QAbstractButton) -> None:
+    role = button.objectName()
+    ink = {"primary": _current.accent_text, "danger": _current.danger_text}.get(role)
+    button.setIcon(action_icon(button.property("actionIcon"), ink))
+
+
+def retheme_widgets() -> None:
+    """Refresh what the stylesheet cannot reach, in every open window.
+
+    Widgets and pages with colours baked into rich text, brushes or pyqtgraph items define a
+    ``retheme()`` method; buttons with a drawn icon get it redrawn in the new colour.
+    """
+    app = QApplication.instance()
+    if app is None:
+        return
+    for top in app.topLevelWidgets():
+        for widget in (top, *top.findChildren(QWidget)):
+            if isinstance(widget, QAbstractButton) and widget.property("actionIcon"):
+                _paint_action_icon(widget)
+            retheme = getattr(widget, "retheme", None)
+            if callable(retheme):
+                retheme()
 
 
 def on_palette_changed(callback: Callable[[Palette], None]) -> None:
@@ -221,6 +337,7 @@ def apply_theme(app, p: Palette | None = None) -> Palette:
     _current = p if p is not None else saved_palette()
     app.setStyle("Fusion")  # the QSS below assumes Fusion's metrics
     app.setStyleSheet(build_stylesheet(_current))
+    retheme_widgets()
     for callback in list(_listeners):
         try:
             callback(_current)
@@ -364,7 +481,7 @@ def _draw_action(name: str, size: int, ink: QColor) -> QPixmap:
 _asset_cache: dict[str, str] = {}
 
 
-def _checkmark_file(color: str) -> str:
+def checkmark_file(color: str) -> str:
     cached = _asset_cache.get(color)
     if cached and Path(cached).exists():
         return cached
@@ -455,6 +572,7 @@ QFrame#banner[tone="{tone}"] {{
 }}
 QFrame#banner[tone="{tone}"] QLabel {{ color: {fg}; background: transparent; }}
 QLabel#detail[tone="{tone}"] {{ color: {fg}; background: transparent; }}
+QLabel#statusDot[tone="{tone}"] {{ color: {getattr(p, FILLS[tone])}; }}
 """)
     return "\n".join(blocks)
 
@@ -550,6 +668,12 @@ QLabel#pageTitle {{
     font-size: 18px;
     font-weight: 600;
 }}
+QLabel#sectionTitle {{
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: {Space.SM}px;
+}}
+QLabel#statusDot {{ font-size: 16px; }}
 
 /* ── splitters and scroll areas ───────────────────────────────────────── */
 QSplitter::handle {{ background: transparent; }}
@@ -745,7 +869,7 @@ QCheckBox::indicator:hover {{ border-color: {p.accent}; }}
 QCheckBox::indicator:checked {{
     background: {p.accent};
     border-color: {p.accent};
-    image: url("{_checkmark_file(p.accent_text)}");
+    image: url("{checkmark_file(p.accent_text)}");
 }}
 QCheckBox::indicator:checked:disabled {{
     background: {p.text_disabled};
@@ -829,13 +953,13 @@ QProgressBar {{
     min-height: 16px;
 }}
 QProgressBar::chunk {{
-    background: {p.accent};
+    background: {bar_chunk(p)};
     border-radius: {Radius.SM}px;
 }}
-QProgressBar[tone="success"]::chunk {{ background: {p.success}; }}
-QProgressBar[tone="warning"]::chunk {{ background: {p.warning}; }}
-QProgressBar[tone="danger"]::chunk  {{ background: {p.danger}; }}
-QProgressBar[tone="muted"]::chunk   {{ background: {p.border_strong}; }}
+QProgressBar[tone="success"]::chunk {{ background: {bar_chunk(p, "success")}; }}
+QProgressBar[tone="warning"]::chunk {{ background: {bar_chunk(p, "warning")}; }}
+QProgressBar[tone="danger"]::chunk  {{ background: {bar_chunk(p, "danger")}; }}
+QProgressBar[tone="muted"]::chunk   {{ background: {bar_chunk(p, "neutral")}; }}
 
 /* ── scrollbars ───────────────────────────────────────────────────────── */
 QScrollBar:vertical {{

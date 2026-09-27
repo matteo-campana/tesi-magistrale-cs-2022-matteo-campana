@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rsseg.gui import theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import help as helptext
 from rsseg.gui.core.gpu import GPULog
@@ -38,6 +39,7 @@ from rsseg.gui.widgets import (
     load_array,
     plot_series,
     plot_widget,
+    save_plot_png,
     section_title,
 )
 
@@ -274,6 +276,10 @@ class ResultsPage(QWidget):
         except OSError:
             self.config_text.setPlainText("")
 
+    def retheme(self) -> None:
+        if getattr(self, "current", None) is not None:
+            self._show_current()
+
     def _confusion(self, cm) -> None:
         from rsseg.data.classes import CLASS_NAMES
 
@@ -285,13 +291,14 @@ class ResultsPage(QWidget):
             return
         cm = np.asarray(cm, dtype=float)
         rows = cm / np.maximum(cm.sum(1, keepdims=True), 1)
+        # Row-normalised: the diagonal (correct) tinted towards the info blue, the rest towards
+        # the danger red, both from the table surface and capped so the text stays readable.
+        surface = theme.palette().surface
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
                 item = QTableWidgetItem(f"{rows[i, j]:.1%}")
-                shade = int(255 - 180 * rows[i, j])
-                item.setBackground(
-                    QColor(shade, shade, 255) if i == j else QColor(255, shade, shade)
-                )
+                tone = theme.fill("info" if i == j else "danger")
+                item.setBackground(QColor(theme.mix(surface, tone, 0.6 * rows[i, j])))
                 item.setToolTip(f"{int(cm[i, j]):,} pixel".replace(",", "."))
                 self.confusion.setItem(i, j, item)
 
@@ -339,4 +346,4 @@ class ResultsPage(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Salva grafico", str(self.ctx.root / "miou.png"),
                                               "PNG (*.png)")  # fmt: skip
         if path:
-            self.compare_plot.grab().save(path)
+            save_plot_png(self.compare_plot, path)

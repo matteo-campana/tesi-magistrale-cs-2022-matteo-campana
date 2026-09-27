@@ -138,7 +138,30 @@ rsseg predict --run runs/seg-maresunet_r18_imagenet-… --split test --out runs/
 rsseg predict --run runs/seg-… immagini/ --out runs/predictions/nuove --tta
 ```
 
-## 8. File dell'applicazione
+## 8. Tema scuro e tema chiaro
+
+L'app parte in **tema scuro**. Il pulsante «☀ Tema chiaro» / «☾ Tema scuro» in basso a destra, nella barra di
+stato, cambia tema al volo, grafici compresi; la scelta viene ricordata alla prossima apertura.
+
+Lo stile è lo stesso dell'app video-downloader (`rsseg/gui/theme.py` ne è l'adattamento):
+
+- **colori per significato**: ogni colore ha un ruolo (`accent`, `success`, `warning`, `danger`, testo attenuato,
+  superfici); gli stati dei job usano sempre gli stessi toni: in corso indaco, in pausa giallo, completato verde,
+  fallito o interrotto rosso, in coda o fermato grigio;
+- **leggibilità verificata**: un test controlla che ogni testo abbia contrasto almeno 4,5:1 (WCAG AA) sulla
+  superficie su cui compare, in entrambi i temi, comprese le percentuali stampate sulle barre di avanzamento;
+- **grafici**: sfondo, assi e griglia seguono il tema; le serie usano otto colori in ordine fisso, validati per
+  il daltonismo su entrambi gli sfondi; la stessa grandezza ha lo stesso colore in tutti i grafici
+  (training blu, validazione arancione);
+- **pulsanti per ruolo**: un solo pulsante principale per pagina (indaco pieno), le azioni distruttive in rosso,
+  le icone (play, pausa, stop, cartella) disegnate nel codice e ricolorate con il tema.
+
+Non cambiano con il tema i **colori delle classi** ISPRS (sono dati, identici alle figure della tesi) né le
+**esportazioni** per i documenti: «Salva grafico PNG» (Risultati) salva sempre il grafico in tema chiaro,
+«Esporta pannello…» (Inferenza), Markdown e CSV non dipendono dal tema. «Salva vista PNG» invece salva la vista
+così come appare sullo schermo.
+
+## 9. File dell'applicazione
 
 | File | Contenuto |
 |---|---|
@@ -148,9 +171,10 @@ rsseg predict --run runs/seg-… immagini/ --out runs/predictions/nuove --tta
 | `.gui/jobs/<id>/log.txt`, `stdout.json` | Log e risultato JSON del comando |
 | `.gui/jobs/<id>/gpu_log.csv` | Campioni della GPU durante il job |
 | `.gui/benchmarks.json` | Picchi di VRAM misurati, per configurazione |
+| impostazioni utente Qt (`rsseg/rsseg-gui`) | Tema scelto (`dark` o `light`) |
 | `<run>/resume/state.json`, `state.npz` | Checkpoint di ripresa (cancellato quando il run finisce) |
 
-## 9. Codice
+## 10. Codice
 
 | Modulo | Ruolo |
 |---|---|
@@ -160,6 +184,7 @@ rsseg predict --run runs/seg-… immagini/ --out runs/predictions/nuove --tta
 | `rsseg/train/resume.py` | `ResumeCheckpoint`, `fit_resumable`: salvataggio e ripresa esatta |
 | `rsseg/eval/predict.py` | `rsseg predict` |
 | `rsseg/gui/core/` | Parti senza Qt, testate senza display: job (`jobs.py`), tempi (`timing.py`), GPU (`gpu.py`), suggerimenti (`help.py`), run (`runs.py`) |
+| `rsseg/gui/theme.py` | Palette scura e chiara, foglio di stile, icone disegnate, colori dei grafici |
 | `rsseg/gui/context.py`, `widgets.py`, `actions.py`, `app.py`, `pages/` | Interfaccia Qt |
 
 L'interfaccia non importa mai torch né keras (un test lo verifica): i comandi pesanti girano in processi separati,

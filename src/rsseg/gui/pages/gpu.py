@@ -20,9 +20,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rsseg.gui import theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import gpu as gpucore
-from rsseg.gui.widgets import LEVEL_COLORS, plot_series, plot_widget, section_title, tip
+from rsseg.gui.widgets import LEVEL_TONES, plot_series, plot_widget, section_title, tip
 
 MODES = {"nvml": "NVML (nvidia-ml-py)", "smi": "nvidia-smi", "none": "non disponibile"}
 
@@ -80,7 +81,8 @@ class GPUPage(QWidget):
         tip(self.mem_bar, "gpu", "memory")
         grid.addWidget(self.mem_bar, 4, 0, 1, 4)
         self.alerts = QLabel()
-        self.alerts.setStyleSheet("color:#c0392b; font-weight:bold;")
+        self.alerts.setObjectName("detail")
+        theme.set_tone(self.alerts, "danger")
         grid.addWidget(self.alerts, 5, 0, 1, 4)
         v.addWidget(live)
 
@@ -93,7 +95,7 @@ class GPUPage(QWidget):
             charts.addWidget(p)
         v.addLayout(charts)
 
-        v.addWidget(tip(QLabel("<b>Processi sulla GPU</b>"), "gpu", "processes"))
+        v.addWidget(tip(section_title("Processi sulla GPU"), "gpu", "processes"))
         self.procs = QTableWidget(0, 3)
         self.procs.setHorizontalHeaderLabels(["PID", "Processo", "Memoria"])
         self.procs.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -121,8 +123,8 @@ class GPUPage(QWidget):
 
     def refresh_status(self) -> None:
         level, message = gpucore.status(self.ctx.samples, self.ctx.torch_info)
-        self.status.setText(f"<span style='color:{LEVEL_COLORS[level]}; font-size:18px'>●</span> "
-                            + message.replace("\n", "<br>"))  # fmt: skip
+        dot = f"<span style='color:{theme.fill(LEVEL_TONES[level])}; font-size:18px'>●</span>"
+        self.status.setText(f"{dot} " + message.replace("\n", "<br>"))
         t = self.ctx.torch_info
         if t is None:
             self.torch.setText("verifica in corso…")
@@ -134,6 +136,9 @@ class GPUPage(QWidget):
                 + (f" ({t.get('cuda_version')}) · {t.get('device')} · bfloat16 "
                    f"{'sì' if t.get('bf16') else 'no'}" if t.get("cuda_available") else "")
             )  # fmt: skip
+
+    def retheme(self) -> None:
+        self.refresh_status()
 
     def on_samples(self, samples) -> None:
         self._tick += 1
@@ -160,6 +165,7 @@ class GPUPage(QWidget):
         self.values["fan"].setText(f(s.fan_pct, "{:.0f} %"))
         if s.mem_fraction is not None:
             self.mem_bar.setValue(int(s.mem_fraction * 1000))
+            theme.set_tone(self.mem_bar, "danger" if s.mem_fraction > 0.95 else None)
             self.mem_bar.setFormat(f"VRAM {s.mem_fraction:.0%}")
         self.alerts.setText("  ·  ".join(gpucore.alerts(s)))
         if not self.isVisible():

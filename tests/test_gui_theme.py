@@ -84,6 +84,13 @@ def test_primary_button_text_clears_aa(palette):
 
 
 @pytest.mark.parametrize("palette", PALETTES, ids=IDS)
+def test_progress_text_clears_aa_on_the_fill_and_the_groove(palette):
+    for tone in ("accent", "success", "warning", "danger", "neutral"):
+        assert contrast(palette.text, theme.bar_chunk(palette, tone)) >= 4.5, tone
+    assert contrast(palette.text, palette.surface_alt) >= 4.5
+
+
+@pytest.mark.parametrize("palette", PALETTES, ids=IDS)
 def test_stylesheet_is_complete(palette):
     qss = theme.build_stylesheet(palette)
     assert "{" in qss and qss.count("{") == qss.count("}")
@@ -132,3 +139,55 @@ def test_main_window_switches_theme_live(qapp, tmp_path, settings):
     assert theme.palette() is DARK and theme.saved_palette(settings) is DARK
     ctx.shutdown()
     window.close()
+
+
+def test_no_hardcoded_colours_outside_the_theme():
+    """Colours are chosen by meaning in theme.py; the only hex values elsewhere are data (the
+    ISPRS class colours and the black/white tick drawn on them)."""
+    import re
+    from pathlib import Path
+
+    import rsseg.gui
+
+    allowed = {"#ffffff", "#bbbbbb", "#000000"}
+    found = []
+    for path in Path(rsseg.gui.__file__).parent.rglob("*.py"):
+        if path.name == "theme.py":
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for hex_color in re.findall(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b", line):
+                if hex_color.lower() not in allowed:
+                    found.append(f"{path.name}:{n}: {hex_color}")
+    assert not found, found
+
+
+def test_job_states_use_the_theme_tones(qapp):
+    from rsseg.gui.core.jobs import Job
+    from rsseg.gui.core.timing import describe
+    from rsseg.gui.widgets import JobProgressWidget
+
+    theme.apply_theme(qapp, DARK)
+    w = JobProgressWidget()
+    job = Job("1", "train", [], "T", state="failed", started=0.0, finished=10.0)
+    w.set_view(describe(job, {"started": 0.0, "updated": 10.0}, 10.0), job)
+    assert w.pill.property("tone") == "danger" and not w.pill.isHidden()
+    assert w.stop_btn.objectName() == "danger" and w.stop_btn.property("actionIcon") == "stop"
+    theme.apply_theme(qapp, LIGHT)  # the widget restyles itself; nothing is left in dark colours
+    assert LIGHT.danger_text in w.phases.label.text() or "✖" not in w.phases.label.text()
+    assert DARK.text_muted not in w.times.text()
+    theme.apply_theme(qapp, DARK)
+
+
+def test_exported_charts_are_light_whatever_the_theme(qapp, tmp_path):
+    from PySide6.QtGui import QImage
+
+    from rsseg.gui.widgets import plot_series, plot_widget, save_plot_png
+
+    theme.apply_theme(qapp, DARK)
+    w = plot_widget("mIoU", "", "epoca")
+    w.resize(300, 200)
+    plot_series(w, {"a": ([1, 2, 3], [0.1, 0.2, 0.3]), "b": ([1, 2, 3], [0.3, 0.2, 0.1])})
+    save_plot_png(w, tmp_path / "chart.png")
+    corner = QImage(str(tmp_path / "chart.png")).pixelColor(2, 2).name().upper()
+    assert corner == LIGHT.surface.upper()
+    assert theme.palette() is DARK and w.backgroundBrush().color().name().upper() == DARK.surface

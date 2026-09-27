@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Widgets shared by the pages: job progress, GPU status, charts, synchronised image views."""
+"""Widgets shared by the pages: job progress, GPU status, charts, synchronised image views.
+
+Colours come from `rsseg.gui.theme` by meaning (a tone such as ``"danger"``), never as hex:
+widgets that bake a colour into rich text, a brush or a chart define ``retheme()``, which the
+theme calls when the user switches between dark and light.
+"""
 
 from __future__ import annotations
 
@@ -24,22 +29,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rsseg.gui import theme
 from rsseg.gui.core import help as helptext
 from rsseg.gui.core.gpu import GPUSample
 from rsseg.gui.core.timing import JobView, fmt_clock, fmt_duration, fmt_range
 
-STATE_COLORS = {
-    "queued": "#7f8c8d",
-    "running": "#2471a3",
-    "pausing": "#b9770e",
-    "stopping": "#b9770e",
-    "done": "#1e8449",
-    "failed": "#c0392b",
-    "paused": "#b9770e",
-    "stopped": "#7f8c8d",
-    "interrupted": "#c0392b",
+STATE_TONES = {
+    "queued": "neutral",
+    "running": "accent",
+    "pausing": "warning",
+    "stopping": "warning",
+    "done": "success",
+    "failed": "danger",
+    "paused": "warning",
+    "stopped": "neutral",
+    "interrupted": "danger",
 }
-LEVEL_COLORS = {"ready": "#1e8449", "warning": "#d4ac0d", "absent": "#c0392b"}
+LEVEL_TONES = {"ready": "success", "warning": "warning", "absent": "danger"}
 
 
 def tip(widget: QWidget, section: str, key: str, **kw) -> QWidget:
@@ -48,22 +54,48 @@ def tip(widget: QWidget, section: str, key: str, **kw) -> QWidget:
     return widget
 
 
-def badge(text: str, color: str) -> str:
-    return (f"<span style='background:{color};color:white;border-radius:3px;"
-            f"padding:1px 6px'>&nbsp;{text}&nbsp;</span>")  # fmt: skip
-
-
 def section_title(text: str) -> QLabel:
-    label = QLabel(f"<b>{text}</b>")
-    label.setStyleSheet("font-size: 14px; margin-top: 6px;")
+    label = QLabel(text)
+    label.setObjectName("sectionTitle")
     return label
+
+
+def action_button(text: str, icon: str, role: str | None = None) -> QPushButton:
+    """A button with a drawn icon; ``role`` is ``"primary"``, ``"danger"`` or ``"quiet"``."""
+    button = QPushButton(text)
+    if role:
+        button.setObjectName(role)
+    theme.set_action_icon(button, icon)
+    return button
+
+
+def status_dot(level: str) -> QLabel:
+    """``●`` in the fill colour of a GPU level (``ready``, ``warning``, ``absent``)."""
+    dot = QLabel("●")
+    dot.setObjectName("statusDot")
+    theme.set_tone(dot, LEVEL_TONES.get(level, "neutral"))
+    return dot
+
+
+class StatusPill(QLabel):
+    """A job state as a rounded, tinted label (``in esecuzione``, ``in pausa``, …)."""
+
+    def __init__(self, text: str = "", tone: str = "neutral"):
+        super().__init__()
+        self.setObjectName("statusPill")
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.set(text, tone)
+
+    def set(self, text: str, tone: str) -> None:
+        self.setText(text)
+        theme.set_tone(self, tone)
 
 
 # --------------------------------------------------------------------------- progress
 class PhaseStrip(QWidget):
-    """``● Avvio  ● Training  ○ Valutazione  ○ Report``."""
+    """``✔ Avvio → ● Training → ○ Valutazione → ○ Report``."""
 
-    COLORS = {"done": "#1e8449", "active": "#2471a3", "todo": "#95a5a6", "error": "#c0392b"}
+    TONES = {"done": "success", "active": "accent", "todo": "neutral", "error": "danger"}
     SYMBOLS = {"done": "✔", "active": "●", "todo": "○", "error": "✖"}
 
     def __init__(self):
@@ -72,12 +104,17 @@ class PhaseStrip(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.label)
+        self.phases: list[tuple[str, str]] = []
         self.setToolTip("Fasi del processo: ✔ completata, ● in corso, ○ da fare, ✖ interrotta")
 
     def set_phases(self, phases: list[tuple[str, str]]) -> None:
-        parts = [f"<span style='color:{self.COLORS[s]}'>{self.SYMBOLS[s]} {name}</span>"
+        self.phases = list(phases)
+        parts = [theme.span(f"{self.SYMBOLS[s]} {name}", self.TONES[s], bold=s == "active")
                  for name, s in phases]  # fmt: skip
-        self.label.setText("  →  ".join(parts))
+        self.label.setText(theme.span("  →  ", "neutral").join(parts))
+
+    def retheme(self) -> None:
+        self.set_phases(self.phases)
 
 
 class JobProgressWidget(QFrame):
@@ -89,16 +126,22 @@ class JobProgressWidget(QFrame):
 
     def __init__(self, compact: bool = False):
         super().__init__()
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setObjectName("card")
         self.compact = compact
         v = QVBoxLayout(self)
+        v.setContentsMargins(theme.Space.XL, theme.Space.LG, theme.Space.XL, theme.Space.LG)
+        v.setSpacing(theme.Space.MD)
         head = QHBoxLayout()
+        head.setSpacing(theme.Space.MD)
         self.title = QLabel()
         self.title.setTextFormat(Qt.RichText)
-        head.addWidget(self.title, 1)
-        self.pause_btn = tip(QPushButton("⏸ Pausa"), "options", "pause")
-        self.resume_btn = tip(QPushButton("▶ Riprendi"), "options", "resume")
-        self.stop_btn = tip(QPushButton("⏹ Stop"), "options", "stop")
+        self.pill = StatusPill()
+        head.addWidget(self.title)
+        head.addWidget(self.pill)
+        head.addStretch(1)
+        self.pause_btn = tip(action_button("Pausa", "pause"), "options", "pause")
+        self.resume_btn = tip(action_button("Riprendi", "play", "primary"), "options", "resume")
+        self.stop_btn = tip(action_button("Stop", "stop", "danger"), "options", "stop")
         for b, sig in ((self.pause_btn, self.pause_clicked), (self.resume_btn, self.resume_clicked),
                        (self.stop_btn, self.stop_clicked)):  # fmt: skip
             b.clicked.connect(lambda *_, s=sig: s.emit())
@@ -107,6 +150,8 @@ class JobProgressWidget(QFrame):
         self.phases = PhaseStrip()
         v.addWidget(self.phases)
         self.grid = QGridLayout()
+        self.grid.setHorizontalSpacing(theme.Space.LG)
+        self.grid.setVerticalSpacing(theme.Space.SM)
         v.addLayout(self.grid)
         self.bars: list[tuple[QLabel, QProgressBar]] = []
         self.total_label = QLabel("Totale")
@@ -119,13 +164,16 @@ class JobProgressWidget(QFrame):
             "con early stopping è un intervallo."
         )
         self.gpu = QLabel()
+        self.gpu.setObjectName("hint")
         self.gpu.setToolTip(helptext.text("gpu", "util"))
         self.notes = QLabel()
+        self.notes.setObjectName("detail")
         self.notes.setWordWrap(True)
-        self.notes.setStyleSheet("color: #555;")
+        theme.set_tone(self.notes, "neutral")
         v.addWidget(self.times)
         v.addWidget(self.gpu)
         v.addWidget(self.notes)
+        self._last: tuple = (None, None, None)
         self.set_view(None)
 
     def _bar(self, i: int) -> tuple[QLabel, QProgressBar]:
@@ -138,7 +186,11 @@ class JobProgressWidget(QFrame):
             self.bars.append((label, bar))
         return self.bars[i]
 
+    def retheme(self) -> None:
+        self.set_view(*self._last)
+
     def set_view(self, view: JobView | None, job=None, sample: GPUSample | None = None) -> None:
+        self._last = (view, job, sample)
         for label, bar in self.bars:
             label.hide()
             bar.hide()
@@ -147,13 +199,14 @@ class JobProgressWidget(QFrame):
             self.phases.hide()
             self.total_label.hide()
             self.total.hide()
-            for w in (self.times, self.gpu, self.notes, self.pause_btn, self.resume_btn,
-                      self.stop_btn):  # fmt: skip
+            for w in (self.pill, self.times, self.gpu, self.notes, self.pause_btn,
+                      self.resume_btn, self.stop_btn):  # fmt: skip
                 w.hide()
             return
         self.phases.show()
-        color = STATE_COLORS.get(view.state, "#555")
-        self.title.setText(f"<b>{view.title}</b> {badge(view.state_label, color)}")
+        self.title.setText(f"<b>{view.title}</b>")
+        self.pill.set(view.state_label, STATE_TONES.get(view.state, "neutral"))
+        self.pill.show()
         self.phases.set_phases(view.phases)
         rows = [*view.bars, None]
         for i, b in enumerate(rows):
@@ -167,6 +220,8 @@ class JobProgressWidget(QFrame):
             else:
                 label.setText(b.label.strip())
                 frac, text = b.fraction, b.text
+            theme.set_tone(bar, {"done": "success", "failed": "danger", "interrupted": "danger",
+                                 "paused": "warning"}.get(view.state))  # fmt: skip
             if frac is None:
                 bar.setRange(0, 0 if view.state == "running" else 1000)  # 0..0: busy indicator
                 bar.setValue(0)
@@ -186,7 +241,7 @@ class JobProgressWidget(QFrame):
                 parts.append(f"Fine prevista <b>{end}</b>")
         elif view.state == "queued" and view.remaining_s:
             parts.append(f"Durata stimata <b>{fmt_duration(view.remaining_s)}</b>")
-        self.times.setText(" · ".join(parts))
+        self.times.setText(theme.span(" · ", "neutral").join(parts))
         self.times.show()
         if sample is not None and running and job is not None and job.uses_gpu:
             self.gpu.setText(gpu_line(sample))
@@ -195,7 +250,7 @@ class JobProgressWidget(QFrame):
             self.gpu.hide()
         self.notes.setText("<br>".join(view.notes))
         self.notes.setVisible(bool(view.notes))
-        self.notes.setStyleSheet("color: #b9770e;" if view.stale else "color: #555;")
+        theme.set_tone(self.notes, "warning" if view.stale else "neutral")
         pausable = job is not None and job.pausable
         self.pause_btn.setVisible(view.state == "running" and pausable)
         self.stop_btn.setVisible(view.state in ("running", "pausing", "queued"))
@@ -224,25 +279,27 @@ class GPUStatusWidget(QWidget):
     def __init__(self):
         super().__init__()
         h = QHBoxLayout(self)
-        h.setContentsMargins(4, 0, 4, 0)
-        self.dot = QLabel("●")
+        h.setContentsMargins(theme.Space.SM, 0, theme.Space.SM, 0)
+        self.dot = status_dot("warning")
         self.text = QLabel("GPU: rilevamento…")
         self.mem = QProgressBar()
         self.mem.setMaximumWidth(120)
-        self.mem.setMaximumHeight(14)
+        self.mem.setMaximumHeight(10)
+        self.mem.setStyleSheet("min-height: 0px;")
         self.mem.setRange(0, 1000)
         self.mem.setTextVisible(False)
         tip(self.mem, "gpu", "memory")
         for w in (self.dot, self.text, self.mem):
             h.addWidget(w)
         self.level = "warning"
+        self.setCursor(Qt.PointingHandCursor)
 
     def mousePressEvent(self, event):  # noqa: N802 (Qt API)
         self.clicked.emit()
 
     def update_status(self, level: str, message: str, sample: GPUSample | None) -> None:
         self.level = level
-        self.dot.setStyleSheet(f"color: {LEVEL_COLORS.get(level, '#999')}; font-size: 16px;")
+        theme.set_tone(self.dot, LEVEL_TONES.get(level, "neutral"))
         if sample is None:
             self.text.setText("GPU non rilevata" if level == "absent" else "GPU")
             self.mem.hide()
@@ -252,56 +309,118 @@ class GPUStatusWidget(QWidget):
             if sample.mem_fraction is not None:
                 self.mem.show()
                 self.mem.setValue(int(sample.mem_fraction * 1000))
-                color = "#c0392b" if sample.mem_fraction > 0.95 else "#2471a3"
-                self.mem.setStyleSheet(f"QProgressBar::chunk {{ background: {color}; }}")
+                theme.set_tone(self.mem, "danger" if sample.mem_fraction > 0.95 else None)
         self.setToolTip(f"<qt>{message.replace(chr(10), '<br>')}<br><br>"
                         "Clic per aprire la sezione GPU.</qt>")  # fmt: skip
 
 
 # ------------------------------------------------------------------------------ charts
-def plot_widget(title: str = "", left: str = "", bottom: str = ""):
+def _style_plot(w) -> None:
+    """Background, axes, grid, title and legend of a pyqtgraph plot in the current theme."""
     import pyqtgraph as pg
 
-    pg.setConfigOptions(antialias=True, background="w", foreground="#333")
-    w = pg.PlotWidget(title=title)
-    w.showGrid(x=True, y=True, alpha=0.3)
+    p = theme.palette()
+    w.setBackground(p.surface)
+    axis_pen = pg.mkPen(p.border_strong, width=1)
+    for name in ("left", "bottom"):
+        axis = w.getAxis(name)
+        axis.setPen(axis_pen)
+        axis.setTextPen(pg.mkPen(p.text_muted))
+        axis.setGrid(40 if p.is_dark else 60)  # recessive grid: alpha out of 255
+        axis.setZValue(-1000)  # the grid the axis draws goes behind the data, not over it
+    w.setTitle(w.property("chartTitle") or None, color=p.text, size="11pt")
+    legend = w.getPlotItem().legend
+    if legend is not None:
+        legend.setLabelTextColor(p.text_muted)
+        legend.setBrush(pg.mkBrush(QColor(p.surface)))
+        legend.setPen(pg.mkPen(p.border))
+    w.setProperty("seriesTheme", p.name)
+
+
+def plot_widget(title: str = "", left: str = "", bottom: str = ""):
+    """A pyqtgraph plot styled by the theme (and restyled when the theme changes)."""
+    import pyqtgraph as pg
+
+    pg.setConfigOptions(antialias=True)
+    w = pg.PlotWidget()
+    w.setProperty("chartTitle", title)
     if left:
         w.setLabel("left", left)
     if bottom:
         w.setLabel("bottom", bottom)
-    w.addLegend(offset=(10, 10))
+    w.addLegend(offset=(10, 10)).setVisible(False)  # shown when there are two series or more
+    _style_plot(w)
+    w.retheme = lambda: _restyle(w)
     return w
 
 
-SERIES_COLORS = ["#2471a3", "#c0392b", "#1e8449", "#b9770e", "#7d3c98", "#17a589", "#566573"]
+def _restyle(w) -> None:
+    _style_plot(w)
+    redraw = getattr(w, "redraw", None)
+    if callable(redraw):
+        redraw()
+
+
+def save_plot_png(widget, path: str | Path) -> None:
+    """Save a chart as PNG in the light theme (for documents), then restore the theme on screen."""
+    with theme.using(theme.LIGHT):
+        _restyle(widget)
+        widget.grab().save(str(path))
+    _restyle(widget)
+
+
+def set_plot_title(widget, title: str) -> None:
+    widget.setProperty("chartTitle", title)
+    widget.setTitle(title or None, color=theme.palette().text, size="11pt")
 
 
 def plot_series(widget, series: dict[str, tuple[list, list]], markers: list[float] | None = None):
-    """Replace the curves of ``widget``: ``{name: (x, y)}``; ``markers`` draw vertical lines."""
+    """Replace the curves of ``widget``: ``{name: (x, y)}``; ``markers`` draw vertical lines.
+
+    Series keep their colour slot by position (training first, validation second, …), so the
+    same quantity has the same colour in every chart.
+    """
     import pyqtgraph as pg
 
+    widget.redraw = lambda: plot_series(widget, series, markers)
     widget.clear()
+    legend = widget.getPlotItem().legend
+    if legend is not None:  # one series: the title names it, a legend box would only repeat it
+        legend.setVisible(len(series) > 1)
+    colors = theme.series_colors()
+    surface = theme.palette().surface
     for i, (name, (x, y)) in enumerate(series.items()):
         pts = [(a, b) for a, b in zip(x, y, strict=False) if b is not None and b == b]
         if not pts:
             continue
         xs, ys = zip(*pts, strict=True)
-        pen = pg.mkPen(SERIES_COLORS[i % len(SERIES_COLORS)], width=2)
+        color = colors[i % len(colors)]
+        pen = pg.mkPen(color, width=2)
         widget.plot(list(xs), list(ys), pen=pen, name=name, symbol="o" if len(xs) < 60 else None,
-                    symbolSize=5, symbolBrush=SERIES_COLORS[i % len(SERIES_COLORS)])  # fmt: skip
+                    symbolSize=7, symbolBrush=color,
+                    symbolPen=pg.mkPen(surface, width=2))  # fmt: skip
+    muted = theme.palette().text_muted
     for m in markers or []:
-        widget.addItem(pg.InfiniteLine(pos=m, angle=90, pen=pg.mkPen("#b9770e", style=Qt.DashLine),
-                                       label="ripresa", labelOpts={"position": 0.9}))  # fmt: skip
+        widget.addItem(pg.InfiniteLine(pos=m, angle=90, pen=pg.mkPen(muted, style=Qt.DashLine),
+                                       label="ripresa", labelOpts={"position": 0.9,
+                                                                   "color": muted}))  # fmt: skip
 
 
 def bar_chart(widget, labels: list[str], values: list[float], colors: list[str] | None = None):
+    """Bars with the colours given (e.g. the class colours) or the first series colour."""
     import pyqtgraph as pg
 
+    widget.redraw = lambda: bar_chart(widget, labels, values, colors)
     widget.clear()
+    widget.getAxis("bottom").setGrid(False)  # categories: only the value lines help
+    if widget.getPlotItem().legend is not None:
+        widget.getPlotItem().legend.setVisible(False)  # the axis labels name the bars
     xs = list(range(len(values)))
-    brushes = [pg.mkBrush(c) for c in (colors or [SERIES_COLORS[0]] * len(values))]
+    fills = colors or [theme.series_colors()[0]] * len(values)
+    brushes = [pg.mkBrush(c) for c in fills]
     widget.addItem(pg.BarGraphItem(x=xs, height=[v or 0 for v in values], width=0.7,
-                                   brushes=brushes))  # fmt: skip
+                                   brushes=brushes,
+                                   pen=pg.mkPen(theme.palette().surface, width=2)))  # fmt: skip
     widget.getAxis("bottom").setTicks([list(zip(xs, labels, strict=True))])
 
 
@@ -342,7 +461,7 @@ class ImageView(QGraphicsView):
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setMouseTracking(True)
-        self.setBackgroundBrush(QColor("#2c2c2c"))
+        self.retheme()
         self.base = QGraphicsPixmapItem()
         self.overlay = QGraphicsPixmapItem()
         self.overlay.setZValue(1)
@@ -353,6 +472,9 @@ class ImageView(QGraphicsView):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.horizontalScrollBar().valueChanged.connect(lambda _: self._changed())
         self.verticalScrollBar().valueChanged.connect(lambda _: self._changed())
+
+    def retheme(self) -> None:
+        self.setBackgroundBrush(QColor(theme.palette().surface_alt))
 
     def set_image(self, array: np.ndarray | None, fit: bool = False) -> None:
         if array is None:
@@ -449,11 +571,16 @@ CLASS_LABELS_IT = {
 
 
 def class_colors() -> list[str]:
-    """Hex colours of the classes for charts (white impervious surfaces drawn light grey)."""
+    """Hex colours of the classes for charts.
+
+    The ISPRS colours are data and do not follow the theme; only white (impervious surfaces)
+    is drawn light grey on the light theme, where it would vanish into the chart surface.
+    """
     from rsseg.data.classes import PALETTE
 
     colors = ["#{:02x}{:02x}{:02x}".format(*(int(x) for x in rgb)) for rgb in PALETTE]
-    return [c if c != "#ffffff" else "#bbbbbb" for c in colors]
+    white = "#ffffff" if theme.palette().is_dark else "#bbbbbb"
+    return [c if c != "#ffffff" else white for c in colors]
 
 
 def colorize(index: np.ndarray, enabled: set[int] | None = None) -> np.ndarray:
@@ -484,18 +611,29 @@ class ClassLegend(QWidget):
         h = QHBoxLayout(self)
         h.setContentsMargins(0, 0, 0, 0)
         self.boxes = []
+        self.rgb = [tuple(int(x) for x in PALETTE[i]) for i in range(len(CLASS_NAMES))]
         for i, name in enumerate(CLASS_NAMES):
-            r, g, b = (int(x) for x in PALETTE[i])
+            r, g, b = self.rgb[i]
             box = QCheckBox(CLASS_LABELS_IT[name])
             box.setChecked(True)
-            box.setStyleSheet(f"QCheckBox::indicator:checked {{ background: rgb({r},{g},{b}); "
-                              "border: 1px solid #333; }")  # fmt: skip
             box.setToolTip(f"Mostra o nascondi la classe «{CLASS_LABELS_IT[name]}» "
                            f"(colore ISPRS rgb({r},{g},{b}))")  # fmt: skip
             box.toggled.connect(lambda *_: self.changed.emit())
             h.addWidget(box)
             self.boxes.append(box)
         h.addStretch(1)
+        self.retheme()
+
+    def retheme(self) -> None:
+        """Each indicator filled with its class colour, the tick in black or white for contrast."""
+        border = theme.palette().border_strong
+        for box, (r, g, b) in zip(self.boxes, self.rgb, strict=True):
+            ink = "#000000" if 0.299 * r + 0.587 * g + 0.114 * b > 140 else "#ffffff"
+            box.setStyleSheet(
+                f"QCheckBox::indicator {{ border: 2px solid rgb({r},{g},{b}); }}"
+                f"QCheckBox::indicator:checked {{ background: rgb({r},{g},{b}); "
+                f'border: 1px solid {border}; image: url("{theme.checkmark_file(ink)}"); }}'
+            )
 
     def enabled(self) -> set[int]:
         return {i for i, b in enumerate(self.boxes) if b.isChecked()}

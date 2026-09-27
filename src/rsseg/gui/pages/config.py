@@ -31,11 +31,11 @@ from PySide6.QtWidgets import (
 )
 
 from rsseg.config import load_config
-from rsseg.gui import actions
+from rsseg.gui import actions, theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import help as helptext
 from rsseg.gui.core.timing import fmt_duration
-from rsseg.gui.widgets import section_title, tip
+from rsseg.gui.widgets import action_button, section_title, tip
 
 SECTIONS = [("general", "Generale"), ("data", "Dati"), ("model", "Modello"),
             ("train", "Training"), ("eval", "Valutazione"), ("ssl", "Pre-training DINO"),
@@ -242,7 +242,7 @@ class ConfigPage(QWidget):
         self.summary.setTextFormat(Qt.RichText)
         self.overrides_label = QLabel()
         self.overrides_label.setWordWrap(True)
-        self.overrides_label.setStyleSheet("color:#555; font-family: monospace;")
+        self.overrides_label.setObjectName("mono")
         self.overrides_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         buttons = QHBoxLayout()
@@ -250,21 +250,24 @@ class ConfigPage(QWidget):
                 ("Benchmark DINO", self.benchmark_dino, "options", "benchmark"),
                 ("Verifica dati", self.prepare_dry, "options", "prepare.dry_run"),
                 ("Prepara dati", self.prepare, None, None),
-                ("▶ Avvia training", self.train, None, None),
-                ("▶ Avvia pre-training DINO", self.pretrain, None, None),
+                ("Avvia training", self.train, None, None),
+                ("Avvia pre-training DINO", self.pretrain, None, None),
                 ("Valuta pesi…", self.evaluate, None, None),
                 ("Salva come…", self.save_as, None, None)]  # fmt: skip
         for text, slot, section, key in spec:
-            b = QPushButton(text)
+            if text.startswith("Avvia"):
+                b = action_button(text, "play", "primary" if text == "Avvia training" else None)
+            else:
+                b = QPushButton(text)
             b.clicked.connect(slot)
             if section:
                 tip(b, section, key)
             buttons.addWidget(b)
         tips = {"Prepara dati": "Taglia le tile originali (data.raw_dir) in crop e maschere in "
                                 "data.root, con manifest e statistiche.",
-                "▶ Avvia training": "Aggiunge alla coda il training con questa configurazione "
+                "Avvia training": "Aggiunge alla coda il training con questa configurazione "
                                     "(le modifiche diventano override --set).",
-                "▶ Avvia pre-training DINO": "Pre-training self-supervised dell'encoder (ssl.*).",
+                "Avvia pre-training DINO": "Pre-training self-supervised dell'encoder (ssl.*).",
                 "Valuta pesi…": "Valuta un file di pesi sulle tile intere dello split eval.split.",
                 "Salva come…": "Salva un nuovo YAML che eredita da questo file (base:) con i "
                                "soli valori modificati."}  # fmt: skip
@@ -330,6 +333,10 @@ class ConfigPage(QWidget):
         except ValueError:
             return str(self.path)
 
+    def retheme(self) -> None:
+        if self.path is not None:
+            self._on_changed()
+
     def _on_changed(self) -> None:
         errors = []
         for ed in self.editors.values():
@@ -338,7 +345,8 @@ class ConfigPage(QWidget):
             except ValueError as e:
                 errors.append(str(e))
                 changed = True
-            ed.label.setStyleSheet("font-weight: bold; color: #2471a3;" if changed else "")
+            ed.label.setStyleSheet(f"font-weight: bold; color: {theme.fg('accent')};" if changed
+                                   else "")  # fmt: skip
         try:
             overrides = self.overrides()
         except ValueError:
@@ -346,11 +354,11 @@ class ConfigPage(QWidget):
         self.overrides_label.setText(("--set " + " ".join(overrides)) if overrides else
                                      "Nessuna modifica rispetto al file.")  # fmt: skip
         if errors:
-            self.summary.setText("<span style='color:#c0392b'>" + "<br>".join(errors) + "</span>")
+            self.summary.setText(theme.span("<br>".join(errors), "danger"))
             return
         cfg = self.ctx.config_for(self.config_arg(), overrides) if self.path else None
         if cfg is None:
-            self.summary.setText("<span style='color:#c0392b'>Configurazione non valida</span>")
+            self.summary.setText(theme.span("Configurazione non valida", "danger"))
             return
         t = cfg.train
         parts = [f"Batch effettivo <b>{t.batch_size} × {t.grad_accum_steps} = "
@@ -364,14 +372,13 @@ class ConfigPage(QWidget):
         total = self.ctx.sample.mem_total_gb if self.ctx.sample else None
         if peak is not None:
             ok = total is None or peak < total * 0.95
-            parts.append(f"picco VRAM misurato <b style='color:{'#1e8449' if ok else '#c0392b'}'>"
-                         f"{peak:.1f} GB</b>" + (f" su {total:.1f}" if total else ""))  # fmt: skip
+            parts.append("picco VRAM misurato "
+                         + theme.span(f"{peak:.1f} GB", "success" if ok else "danger", bold=True)
+                         + (f" su {total:.1f}" if total else ""))  # fmt: skip
         else:
             parts.append("picco VRAM: <i>non misurato («Entra in 8 GB?»)</i>")
         if not (Path(cfg.data.root) / "crops.csv").exists():
-            parts.append(
-                f"<span style='color:#b9770e'>dati non preparati in {cfg.data.root}</span>"
-            )
+            parts.append(theme.span(f"dati non preparati in {cfg.data.root}", "warning"))
         self.summary.setText(" · ".join(parts))
         self.summary.setToolTip(helptext.text("config", "train.grad_accum_steps"))
 
