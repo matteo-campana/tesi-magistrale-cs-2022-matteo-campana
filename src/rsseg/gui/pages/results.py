@@ -4,7 +4,6 @@ predictions; comparison of runs (mean ± std over seeds) with export for the the
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -341,7 +340,3 @@ class ResultsPage(QWidget):
                                               "PNG (*.png)")  # fmt: skip
         if path:
             self.compare_plot.grab().save(path)
-
-
-def report_json(run: RunInfo) -> str:
-    return json.dumps(run.report or {}, indent=2)
