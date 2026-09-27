@@ -79,6 +79,8 @@ flowchart LR
 │   ├── console.py                # output rich: logging, barre di avanzamento, tabelle
 │   ├── cli.py                    # rsseg synth|prepare|prepare-unlabeled|train|pretrain|evaluate|benchmark|report|campaign|backbones
 │   ├── campaign.py               # campagne: espansione YAML, prerequisiti, store condiviso, ripresa, report
+│   ├── eta.py                    # stime di durata dei passi (valori misurati, ricalibrati sui run)
+│   ├── progress.py               # progress.json condiviso tra training e campagna
 │   ├── data/
 │   │   ├── classes.py            # classi, palette, LUT vettorizzata, mapping legacy
 │   │   ├── sources.py            # layout dei file ISPRS (Potsdam, Vaihingen), priorità delle etichette
@@ -110,7 +112,7 @@ flowchart LR
 │       ├── visualize.py          # pannelli TOP | GT | pred | errori
 │       └── benchmark.py          # picco VRAM e throughput di una configurazione
 ├── scripts/run_thesis_grid.sh    # wrapper di rsseg campaign configs/campaigns/thesis_grid.yaml
-├── tests/                        # 79 test (unit + end-to-end su dati sintetici)
+├── tests/                        # 80 test (unit + end-to-end su dati sintetici)
 ├── docs/
 └── legacy/                       # materiale originale 2022, invariato
 ```

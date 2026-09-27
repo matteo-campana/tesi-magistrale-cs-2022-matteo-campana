@@ -175,34 +175,57 @@ def inspection_table(result: dict):
 def campaign_plan_table(plan: dict):
     from rich.table import Table
 
+    from rsseg.campaign import fmt_duration
+
     table = Table(title=f"campaign {plan['campaign']} — {plan['root']}", title_style="title",
                   header_style="bold")  # fmt: skip
-    for col in ("kind", "id", "state"):
-        table.add_column(col, style="key" if col == "id" else None)
+    for col in ("kind", "id", "state", "estimate"):
+        table.add_column(col, style="key" if col == "id" else None,
+                         justify="right" if col == "estimate" else "left")  # fmt: skip
     for p in plan["pools"]:
-        table.add_row("pool", p["pool"], p["action"])
+        table.add_row("pool", p["pool"], p["action"], "")
     for d in plan["data"]:
-        table.add_row("data", d["root"] + (" (+nDSM)" if d["ndsm"] else ""), d["action"])
+        table.add_row("data", d["root"] + (" (+nDSM)" if d["ndsm"] else ""), d["action"], "")
     for s in plan["steps"]:
-        table.add_row(s["kind"], s["id"], "[muted]done[/]" if s["state"] == "done" else s["state"])
+        done = s["state"] == "done"
+        table.add_row(s["kind"], s["id"], "[muted]done[/]" if done else s["state"],
+                      "" if done else fmt_duration(s.get("estimate_s")))  # fmt: skip
     return table
+
+
+def render_step_view(view):
+    """Rich renderable of :class:`rsseg.campaign.View`: title, progress bars, notes."""
+    from rich.console import Group
+    from rich.progress_bar import ProgressBar
+    from rich.table import Table
+    from rich.text import Text
+
+    bars = Table.grid(padding=(0, 1))
+    bars.add_column(style="key")
+    bars.add_column(width=30)
+    bars.add_column(justify="right", style="metric")
+    bars.add_column()
+    for b in view.bars:
+        bars.add_row(b.label, ProgressBar(total=1.0, completed=min(max(b.fraction, 0.0), 1.0)),
+                     f"{b.fraction:.0%}", b.text)  # fmt: skip
+    notes = [
+        Text("  " + line, style="muted" if line.startswith("log:") else "") for line in view.lines
+    ]
+    return Group(Text(view.title, style="title"), bars, *notes)
 
 
 @contextlib.contextmanager
 def live_step_progress(running):
     """Show the progress of a running campaign step, refreshed every second, until it ends."""
     from rich.live import Live
-    from rich.text import Text
 
     from rsseg.campaign import describe_progress
     from rsseg.progress import read
 
-    def render() -> Text:
-        first, *rest = describe_progress(running, read(running.progress_path), time.time())
-        text = Text(first, style="title")
-        for line in rest:
-            text.append("\n  " + line, style="muted" if line.startswith("log:") else None)
-        return text
+    def render():
+        return render_step_view(
+            describe_progress(running, read(running.progress_path), time.time())
+        )
 
     with Live(get_renderable=render, console=err_console, refresh_per_second=1, transient=True):
         yield
@@ -212,6 +235,7 @@ def run_campaign_command(args) -> int:
     from rsseg.campaign import (
         CampaignError,
         Options,
+        fmt_clock,
         load_campaign,
         plan_campaign,
         run_campaign,
@@ -228,9 +252,12 @@ def run_campaign_command(args) -> int:
             plan = result = plan_campaign(campaign, opts)
         if not args.json:
             console.print(campaign_plan_table(result))
+            ends = (
+                f" (ends ~{fmt_clock(time.time(), result['eta_s'])})" if result["pending"] else ""
+            )
             console.print(f"pending {result['pending']}, done {result['done']} — disk needed "
                           f"~{result['disk_needed_gb']} GB (free {result['disk_free_gb']} GB) — "
-                          f"estimated time {result['eta']}")  # fmt: skip
+                          f"estimated time {result['eta']}{ends}")  # fmt: skip
         if not args.dry_run:
             watch = None if args.json else live_step_progress
             result = run_campaign(campaign, opts, echo=err_console.print, plan=plan, watch=watch)

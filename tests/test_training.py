@@ -217,8 +217,11 @@ def test_end_to_end_train_and_pretrain(synthetic_dataset, tmp_path, monkeypatch)
     run = mlflow.get_run(result["run_id"])
     assert "val_miou" in run.data.metrics and "test_miou" in run.data.metrics
 
+    # a full pass (steps_per_epoch null, as in the real runs) is logged without conflicts
+    cfg.ssl.steps_per_epoch, cfg.ssl.batch_size = None, 32
     pre = pretrain_dino(cfg)
     assert Path(pre["backbone_weights"]).exists()
+    assert int(mlflow.get_run(pre["run_id"]).data.params["runtime.ssl_steps_per_epoch"]) > 0
     cfg.model.weights = pre["backbone_weights"]
     cfg.eval.split = ""
     assert train_segmentation(cfg)["best_val_miou"] >= 0

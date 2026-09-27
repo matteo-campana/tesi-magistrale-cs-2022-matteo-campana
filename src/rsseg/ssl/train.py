@@ -95,7 +95,7 @@ def pretrain_dino(cfg: ExperimentConfig) -> dict:
         mlflow.log_params(
             {
                 "runtime.precision": precision,
-                "ssl.steps_per_epoch": steps,
+                "runtime.ssl_steps_per_epoch": steps,  # ssl.steps_per_epoch (may be null) is in the config
                 "model.params": model.student.count_params(),
             }
         )

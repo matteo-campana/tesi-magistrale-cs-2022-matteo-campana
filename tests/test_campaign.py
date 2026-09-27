@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from rsseg import eta
 from rsseg.campaign import (
     QUICK_TRAIN,
     STALE_S,
@@ -26,7 +27,10 @@ from rsseg.campaign import (
 )
 from rsseg.cli import main
 from rsseg.config import load_config
+from rsseg.data.datasets import read_crops
+from rsseg.data.prepare import prepare_dataset
 from rsseg.data.synthetic import make_synthetic_potsdam
+from rsseg.eta import Estimator, TrainCost
 from rsseg.progress import ENV, FILE_NAME, read
 from rsseg.train.callbacks import ProgressReporter
 
@@ -242,33 +246,115 @@ def test_progress_reporter_follows_early_stopping(tmp_path, monkeypatch):
     assert p["epoch_s"] >= 0 and p["updated"] > 0
 
 
+class StubEstimator:
+    """Fixed costs: 3 h per training, 10 min per pre-training, nothing known about benchmarks."""
+
+    def observe(self, *_):
+        pass
+
+    def seconds(self, kind, cfg):
+        return {"train": 3 * 3600.0, "pretrain": 600.0}.get(kind, float("nan"))
+
+    def eval_seconds(self, cfg):
+        return 420.0
+
+    def expected_epochs(self, cfg):
+        return 60.0
+
+    def train_cost(self, cfg):
+        return TrainCost(100.0, 60.0, 168.0, 420.0)
+
+
 def _running(tmp_path, after=("train", "train")) -> Running:
-    step = Step("train", "base__s0", "base", SMOKE, [], seed=0)
-    return Running(step, 2, 5, 1000.0, tmp_path / FILE_NAME, tmp_path / "log.txt", list(after),
-                   {"pretrain": 600.0, "train": 3 * 3600.0, "benchmark": None})  # fmt: skip
+    cfg = load_config(SMOKE)
+    step = Step("train", "base__s0", "base", SMOKE, [], seed=0, cfg=cfg)
+    later = [Step(k, f"next{i}", "next", SMOKE, [], cfg=cfg) for i, k in enumerate(after)]
+    return Running(step, 2, 5, 1000.0, tmp_path / FILE_NAME, tmp_path / "log.txt", later,
+                   StubEstimator(), 0.0)  # fmt: skip
 
 
 def test_describe_progress(tmp_path):
     r = _running(tmp_path)
-    assert describe_progress(r, None, 1060.0)[1].startswith("starting")
+    start = describe_progress(r, None, 1060.0)
+    assert start.lines[0].startswith("starting") and start.step_left == 3 * 3600 - 60
+
     train = {"phase": "train", "stage": "train", "epoch": 12, "epochs": 100, "batch": 198,
              "steps": 396, "monitor": "val_miou", "value": 0.712, "best": 0.718, "best_epoch": 10,
              "since_best": 1, "patience": 20, "epoch_s": 168.0, "updated": 1990.0}  # fmt: skip
-    lines = describe_progress(r, train, 2000.0)
-    assert lines[0] == "[2/5] train base__s0 — running for 16m40s"
-    assert lines[1] == ("epoch 12/100 · batch 198/396 · val_miou 0.7120 (best 0.7180 at "
-                        "epoch 10)")  # fmt: skip
-    assert lines[2] == "2m48s per epoch · early stop after 19 more epochs without improvement"
-    # 19 epochs + half of the current one if it stops early, 88.5 epochs otherwise
-    assert lines[3] == "this step: ~54m36s–4h07m left + test evaluation"
-    assert lines[4] == "then 2 more steps: ~6h00m" and lines[5].startswith("log: ")
+    v = describe_progress(r, train, 2000.0)
+    assert v.title == "[2/5] train base__s0"
+    epoch, step, campaign = v.bars
+    assert (epoch.label, epoch.fraction) == ("epoch", 0.5)
+    assert epoch.text == "epoch 12/100 · batch 198/396 · 2m48s per epoch"
+    # projected stop at epoch 60 (the expected epochs): 48.5 epochs + 7 min of evaluation
+    assert v.step_left == 48.5 * 168 + 420
+    assert step.text.startswith("16m40s elapsed · ~2h22m left · ends ~")
+    assert step.fraction == 1000 / (1000 + v.step_left)
+    assert v.campaign_left == v.step_left + 2 * 3 * 3600
+    assert campaign.text.startswith("step 2/5 · ~8h22m left · ends ~")
+    assert (
+        v.lines[0]
+        == "val_miou 0.7120 · best 0.7180 at epoch 10 · stops at epoch 30 unless it improves"
+    )
+    assert v.lines[1] == ("step: 58m48s if it stops at epoch 30, 4h14m with all 100 epochs "
+                          "(test evaluation ~7m00s included)")  # fmt: skip
+    assert v.lines[-1].startswith("log: ")
+
     evaluation = {"phase": "evaluation", "stage": "test", "tile": 5, "tiles": 14, "tile_s": 30.0,
                   "updated": 1000.0}  # fmt: skip
-    lines = describe_progress(_running(tmp_path, ["benchmark"]), evaluation, 1000.0 + STALE_S + 60)
-    assert lines[1] == "test evaluation · tile 5/14 · 0m30s per tile"
-    assert lines[2] == "this step: ~5m00s left"
-    assert lines[3].startswith("no progress for 16m00s")
-    assert "n/a" in lines[4]
+    v = describe_progress(_running(tmp_path, ["benchmark"]), evaluation, 1010.0)
+    tiles, _, campaign = v.bars
+    assert tiles.text == "test evaluation · tile 5/14 · 0m30s per tile"
+    # 10 s into tile 5: 10 tiles left minus the part of tile 5 already done
+    assert tiles.fraction == pytest.approx((4 + 1 / 3) / 14) and v.step_left == 290
+    assert campaign.text.endswith("(+1 steps without estimate)")
+    assert v.as_text()[1].startswith("tiles     31% test evaluation")
+    stale = describe_progress(_running(tmp_path), evaluation, 1000.0 + STALE_S + 60)
+    assert stale.lines[0].startswith("no progress for 16m00s")
+
+
+def test_estimator_priors_and_measurements(tmp_path, raw):
+    small = [*_small(raw, tmp_path / "data", tmp_path), "train.epochs=100",
+             "train.steps_per_epoch=null", "train.validation_steps=null", "eval.max_tiles=null"]  # fmt: skip
+    cfg = load_config(SMOKE, small)
+    prepare_dataset(cfg.data)
+    crops = read_crops(cfg.data.root, "train")
+    n_val = len(read_crops(cfg.data.root, "val"))
+    bs, mpx = cfg.train.batch_size, 64 * 64 / 1e6
+
+    est = Estimator()
+    cost = est.train_cost(cfg)
+    assert cost.epochs == eta.PRIOR_EPOCHS
+    expected = (len(crops) // bs * bs + eta.VAL_COST * n_val) * mpx
+    assert cost.epoch_s == pytest.approx(expected * eta.PRIOR_TRAIN_S_PER_MPX["resnet18"])
+    test_mpx = sum(est.data(cfg).test_mpx)
+    assert test_mpx == pytest.approx(len(est.data(cfg).test_mpx) * 128 * 128 / 1e6)
+    assert cost.eval_s == pytest.approx(test_mpx * eta.PRIOR_EVAL_S_PER_MPX)
+    # low-label runs: same epoch length unless full_length_epochs is off
+    low = load_config(SMOKE, [*small, "data.label_fraction=0.25"])
+    assert est.train_cost(low).epoch_s == cost.epoch_s
+    one_pass = load_config(
+        SMOKE, [*small, "data.label_fraction=0.25", "data.full_length_epochs=false"]
+    )
+    assert est.train_cost(one_pass).epoch_s < cost.epoch_s
+    no_stop = load_config(SMOKE, [*small, "train.early_stopping_patience=null"])
+    assert est.expected_epochs(no_stop) == 100
+
+    # the running step refines the estimate of the next ones, then its timing replaces the prior
+    p = {"phase": "evaluation", "epoch": 35, "epoch_s": 2 * cost.epoch_s, "tile_s": 1.0}
+    est.observe("train", cfg, p)
+    assert est.train_cost(cfg).epoch_s == pytest.approx(2 * cost.epoch_s)
+    est.live.clear()
+    timing = est.measure("train", cfg, p)
+    store = tmp_path / "store" / "runs" / "x"
+    store.mkdir(parents=True)
+    (store / "outcome.json").write_text(json.dumps({"state": "done", "duration_s": 5000,
+                                                    "timing": timing}), "utf-8")  # fmt: skip
+    measured = Estimator(tmp_path / "store").train_cost(cfg)
+    assert measured.epochs == 35 and measured.epoch_s == pytest.approx(2 * cost.epoch_s)
+    mean_tile = test_mpx / len(est.data(cfg).test_mpx)
+    assert measured.eval_s == pytest.approx(test_mpx / mean_tile)
+    assert Estimator().seconds("benchmark", None) == eta.BENCHMARK_S
 
 
 def test_run_watches_every_step_that_runs(tmp_path, raw):
@@ -335,6 +421,9 @@ def test_campaign_end_to_end_with_real_subprocesses(tmp_path, raw):
     assert read(store / "backbones" / "dino" / FILE_NAME)["phase"] == "pretrain"
     p = read(store / "runs" / "scratch__s0" / FILE_NAME)
     assert p["phase"] == "evaluation" and p["tile"] == p["tiles"] == 1
+    # and its measured speed calibrates the estimates of the next steps
+    outcome = json.loads((store / "runs" / "scratch__s0" / "outcome.json").read_text("utf-8"))
+    assert outcome["timing"]["arch"] == "resnet18" and outcome["timing"]["train_s_per_mpx"] > 0
 
     def never(*_):
         raise AssertionError("a completed step was run again")

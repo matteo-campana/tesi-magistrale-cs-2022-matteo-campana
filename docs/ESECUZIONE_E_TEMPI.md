@@ -13,7 +13,7 @@ Legenda: **misurato** = cronometrato su questa macchina; **stima** = calcolato d
 ## 1. Test automatici (pytest)
 
 ```bash
-pytest -q                          # tutti i 79 test
+pytest -q                          # tutti gli 80 test
 pytest -q -k "not end_to_end"      # esclude i 3 test end-to-end più lenti
 pytest -q tests/test_isprs.py      # un solo file
 pytest -q --durations=10           # mostra i test più lenti
@@ -127,8 +127,8 @@ Dettagli sul funzionamento (store condiviso, ripresa, errori, report) in [GPU_LO
 
 Formula: durata di un run = avvio (~2 min) + epoche × tempo per epoca (§3.1) + valutazione. "Tipico" suppone che
 l'early stopping si fermi intorno a 60 epoche (con lo scheduler `step` il learning rate scende del 60% ogni 15
-epoche); "massimo" usa tutte le 100 epoche. Sono stime: dopo i primi run completati,
-`rsseg campaign … --dry-run` stima il tempo residuo con le durate misurate nello store.
+epoche); "massimo" usa tutte le 100 epoche. Sono stime: `rsseg campaign … --dry-run` mostra la stima di ogni passo e
+l'ora di fine prevista, ricalcolate con le velocità misurate dai run già completati (§4.4).
 
 | Campagna | Contenuto | Passi | Tipico | Massimo |
 |---|---|---|---|---|
@@ -176,28 +176,44 @@ verificare che una campagna parta e arrivi in fondo prima di lanciarla davvero.
 ### 4.4 Seguire una campagna in corso
 
 La console stampa una riga all'inizio (▶) e una alla fine (✓ o ✗) di ogni passo. Mentre il passo gira, sotto la
-riga ▶ c'è un riquadro aggiornato ogni secondo, per esempio:
+riga ▶ c'è un riquadro con tre barre di avanzamento, aggiornato ogni secondo, per esempio:
 
 ```
-[4/30] train maresunet_r18_imagenet__s0 — running for 35m12s
-  epoch 12/100 · batch 198/396 · val_miou 0.7120 (best 0.7180 at epoch 10)
-  2m48s per epoch · early stop after 19 more epochs without improvement
-  this step: ~54m36s–4h07m left + test evaluation
-  then 26 more steps: ~2d08h
+[4/30] train maresunet_r18_imagenet__s0
+epoch    ━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━  50% epoch 12/100 · batch 198/396 · 2m24s per epoch
+step     ━━━━━━━╸━━━━━━━━━━━━━━━━━━━━━━  22% 35m12s elapsed · ~2h02m left · ends ~21:40
+campaign ━╸━━━━━━━━━━━━━━━━━━━━━━━━━━━━   5% step 4/30 · ~2d09h left · ends ~Thu 01/10 07:15
+  val_miou 0.7120 · best 0.7180 at epoch 10 · stops at epoch 30 unless it improves
+  step: 50m48s if it stops at epoch 30, 3h40m with all 100 epochs (test evaluation ~7m08s included)
   log: runs/campaigns/store/runs/maresunet_r18_imagenet__s0/log.txt
 ```
 
-| Riga | Significato |
+| Elemento | Significato |
 |---|---|
 | `[4/30]` | passo corrente e passi da eseguire in questo lancio (quelli già completati non contano) |
+| barra `epoch` | batch dell'epoca corrente; `validation` durante la validazione di fine epoca. Durante la valutazione finale diventa la barra `tiles` (`test evaluation · tile 5/14`) |
+| barra `step` | tempo trascorso e **proiezione** del tempo rimasto del passo, con l'ora di fine prevista |
+| barra `campaign` | tempo rimasto di tutta la campagna (passo corrente + stima dei passi successivi) e ora di fine prevista |
+| `val_miou … best …` | ultima `val_mIoU` e migliore finora (il checkpoint `best.weights.h5` è quello della migliore); l'epoca in cui l'early stopping fermerebbe il run se non migliora più |
+| `step: A if …, B with all …` | intervallo del passo: A se l'early stopping si ferma appena possibile, B se il run arriva a tutte le epoche |
 | `starting: …` | primi 1–2 minuti: import, worker del DataLoader, modello |
-| `epoch … · batch …` | epoca e batch correnti; `validation` durante la validazione di fine epoca |
-| `val_miou … (best …)` | ultima `val_mIoU` e migliore finora: il checkpoint `best.weights.h5` è quello della migliore |
-| `early stop after N …` | epoche senza miglioramenti ancora concesse prima che l'early stopping fermi il run |
-| `this step: A–B left` | A se l'early stopping si ferma appena possibile, B se il run arriva a tutte le epoche; poi la valutazione (~7 min su Potsdam) |
-| `test evaluation · tile 5/14` | valutazione finale sulle tile di test |
-| `then N more steps` | durata media dei passi già completati × passi rimanenti (`n/a` finché non ne è finito almeno uno per tipo) |
 | `no progress for …` | nessun aggiornamento da 15 minuti: controlla il log, il processo potrebbe essere bloccato |
+
+**Come vengono calcolate le proiezioni** (`src/rsseg/eta.py`):
+
+- durata di un training = avvio + epoche previste × durata di un'epoca + valutazione;
+- **durata di un'epoca**: megapixel di training e validazione dell'epoca × secondi per megapixel dell'encoder;
+- **epoche previste**: con early stopping, la media delle epoche dei run già finiti (60 prima del primo) e
+  comunque non meno dell'epoca in cui l'early stopping potrebbe fermare il run in corso; senza early stopping,
+  `train.epochs`;
+- **valutazione**: megapixel delle tile di test × secondi per megapixel;
+- DINO: epoche × immagini per epoca × secondi per immagine.
+
+I valori di partenza sono misurati su RTX 4060: per R18 su Potsdam 144 s per epoca e 0,5 min per tile 6000².
+Vengono sostituiti dalle misure reali: il passo in corso aggiorna subito la stima dei passi dello stesso encoder, e
+ogni passo completato salva le sue velocità in `outcome.json` (campo `timing`), usate dalle stime successive, anche
+di altre campagne. Le stime migliorano quindi dopo il primo run completato. `--dry-run` mostra la stima di ogni passo
+(colonna `estimate`), il totale e l'ora di fine prevista.
 
 Il riquadro legge `progress.json`, che il training scrive nella cartella del passo. Per vedere tutto il dettaglio
 (metriche di ogni epoca, valutazione tile per tile), in un secondo terminale:

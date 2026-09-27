@@ -46,12 +46,14 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 
 import yaml
 
 from rsseg import progress
 from rsseg.config import DataConfig, ExperimentConfig, load_config
+from rsseg.eta import Estimator
 
 log = logging.getLogger(__name__)
 
@@ -510,16 +512,6 @@ def _free_gb(path: Path) -> float:
     return shutil.disk_usage(p).free / 1e9
 
 
-def _mean_duration(layout: Layout, kind: str) -> float | None:
-    folder = {"pretrain": "backbones", "train": "runs", "benchmark": "benchmarks"}[kind]
-    durations = []
-    for f in (layout.root / "store" / folder).glob("*/outcome.json"):
-        o = json.loads(f.read_text(encoding="utf-8"))
-        if o.get("state") == "done":
-            durations.append(o["duration_s"])
-    return sum(durations) / len(durations) if durations else None
-
-
 def fmt_duration(seconds: float | None) -> str:
     if seconds is None or math.isnan(seconds):
         return "n/a"
@@ -527,6 +519,35 @@ def fmt_duration(seconds: float | None) -> str:
     if h >= 24:
         return f"{h // 24}d{h % 24:02d}h"
     return f"{h}h{rem // 60:02d}m" if h else f"{rem // 60}m{rem % 60:02d}s"
+
+
+def fmt_clock(now: float, seconds: float) -> str:
+    """Wall-clock time ``seconds`` after ``now`` (with the day when it is not today)."""
+    if math.isnan(seconds):
+        return "n/a"
+    end = datetime.fromtimestamp(now + seconds)
+    same_day = end.date() == datetime.fromtimestamp(now).date()
+    return end.strftime("%H:%M" if same_day else "%a %d/%m %H:%M")
+
+
+def as_run(steps: list[Step], quick: bool) -> list[Step]:
+    """The steps with the config they actually run with (``--quick`` adds its overrides), for
+    the time estimates."""
+    if not quick:
+        return steps
+    extra = {"train": QUICK_TRAIN, "pretrain": QUICK_SSL}
+    return [replace(s, cfg=_effective(s.config, [*s.overrides, *extra[s.kind]], s.id))
+            if s.kind in extra else s for s in steps]  # fmt: skip
+
+
+def _finite(x: float) -> float | None:
+    return None if math.isnan(x) else round(x)
+
+
+def estimate_steps(estimator: Estimator, steps: list[Step]) -> tuple[float, int]:
+    """Expected total seconds of ``steps`` and how many of them have no estimate yet."""
+    values = [estimator.seconds(s.kind, s.cfg) for s in steps]
+    return sum(v for v in values if not math.isnan(v)), sum(math.isnan(v) for v in values)
 
 
 STALE_S = 900
@@ -544,71 +565,118 @@ class Running:
     started: float
     progress_path: Path
     log_path: Path
-    after: list[str]
-    """Kinds of the steps still to run after this one."""
-    mean_s: dict[str, float | None]
-    """Mean duration of the completed steps by kind (store-wide), for the time left."""
+    after: list[Step]
+    """Steps still to run after this one."""
+    estimator: Estimator
+    campaign_started: float
 
 
-def describe_progress(r: Running, p: dict | None, now: float) -> list[str]:
-    """Lines describing a running step: phase, epoch, metrics and time left."""
-    lines = [f"[{r.index}/{r.total}] {r.step.kind} {r.step.id} — running for "
-             f"{fmt_duration(now - r.started)}"]  # fmt: skip
-    left: tuple[float, float] | None = None
+@dataclass
+class Bar:
+    label: str
+    fraction: float
+    text: str
+
+
+@dataclass
+class View:
+    """What the console shows for a running step: a title, progress bars and notes."""
+
+    title: str
+    bars: list[Bar]
+    lines: list[str]
+    step_left: float
+    """Projected seconds until the step ends."""
+    campaign_left: float
+
+    def as_text(self) -> list[str]:
+        width = max((len(b.label) for b in self.bars), default=0)
+        return [self.title, *(f"{b.label:<{width}} {b.fraction:4.0%} {b.text}" for b in self.bars),
+                *self.lines]  # fmt: skip
+
+
+def _nan0(x: float) -> float:
+    return 0.0 if math.isnan(x) else x
+
+
+def describe_progress(r: Running, p: dict | None, now: float) -> View:
+    """Progress bars (epoch or tiles, step, campaign), metrics and projected end of a step."""
+    est, step, cfg = r.estimator, r.step, r.step.cfg
+    if p is not None:
+        est.observe(step.kind, cfg, p)
+    elapsed = now - r.started
+    bars: list[Bar] = []
+    lines: list[str] = []
+    phase = (p or {}).get("phase")
+    low = high = None
+    eval_s = _nan0(est.eval_seconds(cfg)) if step.kind == "train" and cfg is not None else 0.0
+
     if p is None:
         lines.append("starting: imports, data loaders, model…")
-    elif p.get("phase") in ("train", "pretrain"):
+        left = max(est.seconds(step.kind, cfg) - elapsed, 0.0)
+    elif phase in ("train", "pretrain"):
         epoch, epochs = p.get("epoch") or 0, p.get("epochs") or 0
-        s = f"epoch {epoch}/{epochs}"
-        if p.get("stage") == "validation":
-            s += " · validation"
-        elif p.get("steps"):
-            s += f" · batch {p.get('batch', 0)}/{p['steps']}"
+        steps, batch = p.get("steps") or 0, p.get("batch", 0)
+        validating = p.get("stage") == "validation"
+        epoch_s = p.get("epoch_s") or (est.train_cost(cfg).epoch_s if phase == "train"
+                                       else est.dino_epoch_s(cfg))  # fmt: skip
+        done = float(epoch) if validating else epoch - 1 + (batch / steps if steps else 0)
+        text = f"epoch {epoch}/{epochs} · " + ("validation" if validating else
+                                                f"batch {batch}/{steps}")  # fmt: skip
+        bars.append(Bar("epoch", 1.0 if validating else batch / steps if steps else 0, text +
+                        f" · {fmt_duration(epoch_s)} per epoch" + ("" if p.get("epoch_s") else
+                                                                    " (estimated)")))  # fmt: skip
+        earliest = projected = float(epochs)
+        if p.get("patience") and cfg is not None:
+            earliest = float(min(epochs, max((p.get("best_epoch") or 0) + p["patience"], epoch)))
+            projected = max(earliest, min(float(epochs), est.expected_epochs(cfg)))
         if p.get("value") is not None:
-            s += (f" · {p['monitor']} {p['value']:.4f} (best {p['best']:.4f} at epoch "
-                  f"{p['best_epoch']})")  # fmt: skip
+            note = (
+                f"{p['monitor']} {p['value']:.4f} · best {p['best']:.4f} at epoch {p['best_epoch']}"
+            )
+            if p.get("patience"):
+                note += f" · stops at epoch {earliest:.0f} unless it improves"
+            lines.append(note)
         elif p.get("loss") is not None:
-            s += f" · loss {p['loss']:.4f}"
-        lines.append(s)
-        if p.get("epoch_s"):
-            details = [f"{fmt_duration(p['epoch_s'])} per epoch"]
-            if p.get("stage") == "validation":
-                done = float(epoch)
-            else:
-                done = epoch - 1 + (p.get("batch", 0) / p["steps"] if p.get("steps") else 0)
-            longest = max(epochs - done, 0) * p["epoch_s"]
-            shortest = longest
-            if p.get("patience") and p.get("since_best") is not None:
-                wait = max(p["patience"] - p["since_best"], 0)
-                details.append(f"early stop after {wait} more epochs without improvement")
-                shortest = min(longest, max(epoch + wait - done, 0) * p["epoch_s"])
-            left = (shortest, longest)
-            lines.append(" · ".join(details))
-    elif p.get("phase") == "evaluation":
-        s = f"{p.get('stage', 'test')} evaluation · tile {p.get('tile')}/{p.get('tiles')}"
-        if p.get("tile_s"):
-            rest = (p["tiles"] - p["tile"] + 1) * p["tile_s"]
-            s += f" · {fmt_duration(p['tile_s'])} per tile"
-            left = (rest, rest)
-        lines.append(s)
-    if left is not None:
-        if round(left[0]) == round(left[1]):
-            span = fmt_duration(left[1])
-        else:
-            span = f"{fmt_duration(left[0])}–{fmt_duration(left[1])}"
-        extra = " + test evaluation" if p.get("phase") == "train" else ""
-        lines.append(f"this step: ~{span} left{extra}")
+            lines.append(f"loss {p['loss']:.4f}")
+        left = (projected - done) * epoch_s + eval_s
+        low, high = (earliest - done) * epoch_s + eval_s, (epochs - done) * epoch_s + eval_s
+        if round(low) != round(high):
+            lines.append(f"step: {fmt_duration(low)} if it stops at epoch {earliest:.0f}, "
+                         f"{fmt_duration(high)} with all {epochs} epochs"
+                         + (f" (test evaluation ~{fmt_duration(eval_s)} included)"
+                            if eval_s else ""))  # fmt: skip
+    elif phase == "evaluation":
+        tile, tiles = p.get("tile") or 1, p.get("tiles") or 1
+        tile_s = p.get("tile_s") or eval_s / tiles
+        in_tile = min(
+            max(now - p.get("updated", now), 0.0), tile_s
+        )  # the file is written as a tile starts
+        left = (tiles - tile + 1) * tile_s - in_tile
+        bars.append(Bar("tiles", (tile - 1 + (in_tile / tile_s if tile_s else 0)) / tiles,
+                        f"{p.get('stage', 'test')} evaluation · "
+                        f"tile {tile}/{tiles} · {fmt_duration(tile_s)} per tile"))  # fmt: skip
+    else:
+        left = max(est.seconds(step.kind, cfg) - elapsed, 0.0)
+
+    left = max(_nan0(left), 0.0)
+    bars.append(Bar("step", elapsed / (elapsed + left) if elapsed + left else 0.0,
+                    f"{fmt_duration(elapsed)} elapsed · ~{fmt_duration(left)} left · "
+                    f"ends ~{fmt_clock(now, left)}"))  # fmt: skip
+    later, unknown = estimate_steps(est, r.after)
+    campaign_left = left + later
+    done_s = now - r.campaign_started
+    text = (f"step {r.index}/{r.total} · ~{fmt_duration(campaign_left)} left · "
+            f"ends ~{fmt_clock(now, campaign_left)}")  # fmt: skip
+    if unknown:
+        text += f" (+{unknown} steps without estimate)"
+    bars.append(Bar("campaign", done_s / (done_s + campaign_left) if done_s + campaign_left
+                    else 0.0, text))  # fmt: skip
     if p is not None and now - p.get("updated", now) > STALE_S:
         lines.append(f"no progress for {fmt_duration(now - p['updated'])}: check the log")
-    if r.after:
-        means = [r.mean_s.get(k) for k in r.after]
-        if None in means:
-            eta = "time n/a until a step of each kind has completed"
-        else:
-            eta = f"~{fmt_duration(sum(means))}"
-        lines.append(f"then {len(r.after)} more steps: {eta}")
     lines.append(f"log: {r.log_path.as_posix()}")
-    return lines
+    title = f"[{r.index}/{r.total}] {step.kind} {step.id}"
+    return View(title, bars, lines, left, campaign_left)
 
 
 # ---------------------------------------------------------------------------------- execution
@@ -640,22 +708,24 @@ def plan_campaign(c: Campaign, opts: Options,
     pools = [p for p in c.pools.values() if not pool_ready(p)]
     pending = [s for s in steps if not is_done(layout, s)]
     disk = estimate_disk_gb(pending, preps, pools, param_counter or count_params_subprocess)
-    eta = 0.0
-    for kind in ("pretrain", "train", "benchmark"):
-        n = sum(s.kind == kind for s in pending)
-        mean = _mean_duration(layout, kind)
-        eta = math.nan if n and mean is None else eta + n * (mean or 0)
+    estimator = Estimator(layout.root / "store")
+    timed = {s.id: s for s in as_run(pending, opts.quick)}
+    eta, unknown = estimate_steps(estimator, list(timed.values()))
     return {
         "campaign": c.name, "root": layout.root.as_posix(), "quick": opts.quick,
         "seeds": c.seeds,
         "pools": [{"pool": p.key, "action": "prepare-unlabeled" if p in pools else "ok"}
                   for p in c.pools.values()],
         "data": [{"root": p.root, "action": p.action, "ndsm": p.cfg.ndsm} for p in preps],
-        "steps": [{"kind": s.kind, "id": s.id, "state": "pending" if s in pending else "done"}
+        "steps": [{"kind": s.kind, "id": s.id, "state": "pending" if s in pending else "done",
+                   "estimate_s": _finite(estimator.seconds(s.kind, timed[s.id].cfg)) if s in pending
+                   else None}
                   for s in steps],
         "pending": len(pending), "done": len(steps) - len(pending),
         "disk_needed_gb": round(disk, 1), "disk_free_gb": round(_free_gb(layout.root), 1),
-        "eta": fmt_duration(eta) if pending else "0m00s",
+        "eta_s": eta, "eta_unknown": unknown,
+        "eta": (fmt_duration(eta) + (f" + {unknown} steps without estimate" if unknown else "")
+                if pending else "0m00s"),
     }  # fmt: skip
 
 
@@ -706,8 +776,10 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
 
     # 2. pre-trainings, trainings (seed by seed), benchmarks
     failed: set[str] = set()
+    estimator = Estimator(layout.root / "store")
     steps = [*c.pretrains.values(), *c.runs, *c.benchmarks]
     to_run = [s for s in steps if not is_done(layout, s)]
+    timed = as_run(to_run, opts.quick)
     for step in steps:
         d = layout.step_dir(step)
         entry = {"kind": step.kind, "log": (d / "log.txt").as_posix()}
@@ -730,9 +802,8 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
         t0 = time.time()
         stdout = d / "stdout.json" if step.kind == "benchmark" else None
         (d / progress.FILE_NAME).unlink(missing_ok=True)
-        means = {k: _mean_duration(layout, k) for k in ("pretrain", "train", "benchmark")}
-        running = Running(step, index, len(to_run), t0, d / progress.FILE_NAME, d / "log.txt",
-                          [s.kind for s in to_run[index:]], means)  # fmt: skip
+        running = Running(timed[index - 1], index, len(to_run), t0, d / progress.FILE_NAME,
+                          d / "log.txt", timed[index:], estimator, t_start)  # fmt: skip
         with watch(running) if watch else nullcontext():
             code = runner(command(layout, step, c.name, opts.quick), d / "log.txt", stdout)
         if code == 0 and step.kind == "benchmark":
@@ -744,6 +815,11 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
         ok = code == 0 and is_done(layout, step)
         outcome = {"state": "done" if ok else "failed", "exit_code": code,
                    "duration_s": round(time.time() - t0)}  # fmt: skip
+        estimator.live.clear()
+        if ok:  # calibrates the estimates of the next steps and of later campaigns
+            outcome["timing"] = estimator.measure(step.kind, timed[index - 1].cfg,
+                                                  progress.read(d / progress.FILE_NAME))  # fmt: skip
+            estimator.add(d.parent.name, outcome["timing"], outcome["duration_s"])
         (d / "outcome.json").write_text(json.dumps(outcome, indent=2), encoding="utf-8")
         status[step.id] = {**entry, **outcome}
         echo(f"{'✓' if ok else '✗'} {step.kind} {step.id}: {outcome['state']} in "
