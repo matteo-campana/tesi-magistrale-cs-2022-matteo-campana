@@ -154,11 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             files += sorted(p.rglob("report.json")) if p.is_dir() else [p]
         table = aggregate_reports(files)
         if args.out:
-<<<<<<< HEAD
             Path(args.out).write_text(table, encoding="utf-8")
-        print(table)
-=======
-            Path(args.out).write_text(table)
         if args.json:
             print(table)
         else:
@@ -167,7 +163,6 @@ def main(argv: list[str] | None = None) -> int:
             console.print(Markdown(table))
             if args.out:
                 console.print(f"[muted]written to {args.out}[/]")
->>>>>>> 28592b3e5897396c689ecbb788ce890b09000095
         return 0
 
     cfg = load_config(args.config, args.set)

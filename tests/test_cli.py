@@ -22,7 +22,8 @@ def test_backbones_command(capsys):
 def test_report_json_output(tmp_path, capsys):
     scores = {"oa": 0.9, "mf1": 0.8, "miou": 0.7}
     (tmp_path / "report.json").write_text(
-        json.dumps({"name": "r", "all_classes": scores, "without_clutter": scores})
+        json.dumps({"name": "r", "all_classes": scores, "without_clutter": scores}),
+        encoding="utf-8",
     )
     assert main(["report", str(tmp_path), "--json"]) == 0
     assert "| r | 1 | 0.9000 |" in capsys.readouterr().out

@@ -234,8 +234,8 @@ def test_transformer_segmentor_trains(arch):
     out.float().mean().backward()
     encoder = model.get_layer(f"{arch}_backbone")
     assert all(w.value.grad is not None for w in encoder.trainable_weights)
-    # stochastic depth is active only in training
-    np.testing.assert_allclose(_np(model(x[:1])), _np(model(x[:1])))
+    # stochastic depth is active only in training (atol absorbs GPU non-determinism)
+    np.testing.assert_allclose(_np(model(x[:1])), _np(model(x[:1])), rtol=0, atol=1e-6)
 
 
 def test_drop_path_scales_kept_samples():
