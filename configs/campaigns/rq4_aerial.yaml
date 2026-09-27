@@ -1,0 +1,21 @@
+# RQ4: are the strong DINO colour augmentations suited to aerial images?
+name: rq4_aerial
+description: DINO with the standard vs the milder "aerial" augmentation, fine-tuned with all and with 10% of the labels.
+seeds: [0, 1, 2]
+pretrain:
+  dino_r18: {config: configs/ssl/dino_r18.yaml}
+  dino_r18_aerial: {config: configs/ssl/dino_r18.yaml, set: [ssl.aerial_augment=true]}
+runs:
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18_aerial
+    name: maresunet_r18_dino_aerial
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18
+    name: maresunet_r18_dino_lf{data.label_fraction}
+    sweep: {data.label_fraction: [0.1]}
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18_aerial
+    name: maresunet_r18_dino_aerial_lf{data.label_fraction}
+    sweep: {data.label_fraction: [0.1]}

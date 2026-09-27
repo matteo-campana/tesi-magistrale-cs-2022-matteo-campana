@@ -1,0 +1,14 @@
+# Every campaign. Runs shared by several campaigns (e.g. maresunet_r18_imagenet) are trained once.
+#   rsseg campaign configs/campaigns/all.yaml --dry-run
+name: all
+description: All the experiments of the thesis reimplementation.
+include:
+  - rq1_attention.yaml
+  - rq6_ndsm.yaml
+  - vaihingen.yaml
+  - rq3_low_label.yaml
+  - rq4_aerial.yaml
+  - thesis_grid.yaml
+  - transformers.yaml
+  - thesis2022.yaml
+  - rq5_efficiency.yaml

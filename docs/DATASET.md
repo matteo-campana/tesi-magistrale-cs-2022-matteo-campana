@@ -137,12 +137,14 @@ Split usato comunemente (ad es. da MMSegmentation):
    - I crop interamente non etichettati vengono scartati. L'ultimo crop di ogni riga/colonna è allineato al bordo.
 4. Etichette dei crop: `data.train_labels: full` (default, come la tesi) oppure `eroded` (bordi ignorati anche in
    training, come MMSegmentation). È un'opzione di `prepare`: per cambiarla serve un altro `data.root`.
-5. Formato: PNG per immagini e maschere, `crops.csv` con istogramma delle classi per crop, `split.json`.
+5. Formato: PNG per immagini e maschere, `crops.csv` con istogramma delle classi per crop, `split.json` (split
+   e impostazioni: dataset, protocollo, etichette, `crop_size`, `train_stride`, nDSM; `rsseg campaign` lo usa per
+   non riusare un root preparato con impostazioni diverse).
 6. `stats.json`: media e deviazione standard per canale **solo sul train** (con l'nDSM anche `ndsm_mean`/`ndsm_std`).
    Il modello usa le statistiche ImageNet come primo layer del backbone, per coerenza con i pesi pre-addestrati.
 
 Numeri attesi per Potsdam `standard` con crop 512 e stride 512: 144 crop per tile (12 × 12), quindi 3168 crop di
-train (22 tile), 288 di validation (2 tile) e 14 tile di test.
+train (22 tile), 288 di validation (2 tile) e 14 tile di test. Tempi di preparazione in [ESECUZIONE_E_TEMPI.md](ESECUZIONE_E_TEMPI.md#2-preparazione-dei-dati).
 
 ## 6. nDSM come 4° canale (`data.ndsm: true`)
 

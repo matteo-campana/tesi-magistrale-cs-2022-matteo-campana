@@ -1,0 +1,11 @@
+# Transformer encoders (not in the thesis): Swin-T and ViT-B/16 from ImageNet, ViT-S/16 from DINO.
+name: transformers
+description: MAResU-Net with Swin-T, ViT-B/16 (ImageNet) and ViT-S/16 (DINO on Potsdam) encoders.
+seeds: [0, 1, 2]
+pretrain:
+  dino_vit_s16: {config: configs/ssl/dino_vit_s16.yaml}
+runs:
+  - config: configs/experiments/maresunet_swin_t_imagenet.yaml
+  - config: configs/experiments/maresunet_vit_b_16_imagenet.yaml
+  - config: configs/experiments/maresunet_vit_s_16_dino.yaml
+    backbone: dino_vit_s16

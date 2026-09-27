@@ -7,9 +7,10 @@ Dr. Simone Scardapane e Dr. Valerio Marsocci.
 
 **Keras 3 su backend PyTorch · tracking con MLflow · eseguibile su una singola GPU NVIDIA RTX 4060 (8 GB).**
 
-> **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione) ed è verificato
-> da 59 test automatici su CPU e da run end-to-end su dati sintetici. Gli esperimenti sui dataset reali sono
-> il prossimo passo: vedi il [piano](docs/PIANO_DI_SVILUPPO.md).
+> **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione), con Vaihingen,
+> nDSM e campagne di esperimenti. È verificato da 74 test automatici, da run end-to-end su dati sintetici e da run
+> brevi sui dati ISPRS reali su RTX 4060. Gli esperimenti completi sono il prossimo passo: vedi il
+> [piano](docs/PIANO_DI_SVILUPPO.md) e i [tempi stimati](docs/ESECUZIONE_E_TEMPI.md).
 
 ## Di cosa si tratta
 
@@ -54,7 +55,8 @@ rsseg train     -c configs/experiments/maresunet_r18_imagenet.yaml   # training 
 rsseg pretrain  -c configs/ssl/dino_r18.yaml                         # DINO sull'encoder
 rsseg train     -c configs/experiments/maresunet_r18_dino.yaml       # fine-tuning dal backbone DINO
 rsseg train     -c configs/experiments/maresunet_swin_t_imagenet.yaml # encoder Swin-T (Vision Transformer)
-bash scripts/run_thesis_grid.sh                                      # griglia 2×2×2 della tesi × 3 seed
+rsseg campaign  configs/campaigns/all.yaml --dry-run                # tutti gli esperimenti: piano, disco, tempi
+rsseg campaign  configs/campaigns/rq6_ndsm.yaml                     # una campagna (riprende se interrotta)
 
 # Vaihingen, nDSM e pool non etichettati per DINO
 rsseg prepare -c configs/experiments/vaihingen_maresunet_r18_imagenet_ndsm.yaml   # data/download/Vaihingen
@@ -77,6 +79,7 @@ Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni)
 | `rsseg evaluate` | Valuta un file di pesi su tile intere (finestra scorrevole) |
 | `rsseg benchmark` | Picco di VRAM e immagini/s di una configurazione |
 | `rsseg report` | Tabella media ± std su più run (es. seed) |
+| `rsseg campaign` | Esegue o riprende una campagna di esperimenti (`configs/campaigns/`), con prerequisiti, log e report |
 | `rsseg backbones` | Elenco degli encoder disponibili (ResNet, Swin, ViT), canali e pesi ImageNet (`--params` conta i parametri) |
 
 Ogni valore di configurazione si può sovrascrivere: `--set train.batch_size=4 train.grad_accum_steps=8 model.arch=resnet34`.
@@ -96,7 +99,9 @@ risultati su stdout; con `--json` (prima o dopo il sotto-comando) si ottiene il 
 | VQ | Codebook EMA (inizializzato dai dati, restart dei codici morti), straight-through, perplexity/usage su MLflow, quantizzazione opzionale delle skip |
 | DINO | Head con prototipi, loss per campione, teacher EMA, schedule coseno, multi-crop 2×224 + N×96, monitor di collasso |
 | Training | CE che ignora solo i pixel non etichettati, mIoU/mF1/OA da matrice di confusione globale, bf16, accumulo del gradiente |
-| Valutazione | Finestra scorrevole su tile 6000² intere, report per classe con e senza clutter, mappe di errore |
+| Dati | Potsdam e Vaihingen con controllo delle etichette (priorità alle copie corrette, rifiuto di quelle corrotte), nDSM ufficiale o calcolato come 4° canale, pool non etichettati (Toronto, frame di Vaihingen) per DINO |
+| Valutazione | Finestra scorrevole su tile intere, report per classe con e senza clutter e con etichette piene ed eroded, mappe di errore |
+| Esperimenti | Campagne YAML per domanda di ricerca, riprendibili, con prerequisiti automatici; early stopping e top-5 checkpoint |
 | MLflow | Config, metriche per epoca, VRAM, predizioni, checkpoint, report, versioni e commit git |
 
 ## Documentazione
@@ -107,15 +112,16 @@ risultati su stdout; con `--json` (prima o dopo il sotto-comando) si ottiene il 
 | [docs/REVISIONE_CODICE_ORIGINALE.md](docs/REVISIONE_CODICE_ORIGINALE.md) | Ricognizione del codice 2022 e difetti trovati |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architettura del pacchetto `rsseg` |
 | [docs/DATASET.md](docs/DATASET.md) | ISPRS Potsdam e Vaihingen, problemi noti dei file, split, nDSM, etichette eroded, pool DINO |
-| [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md) | Esecuzione su RTX 4060 8 GB e uso di MLflow |
+| [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md) | Esecuzione su RTX 4060 8 GB, memoria misurata, campagne, MLflow |
+| [docs/ESECUZIONE_E_TEMPI.md](docs/ESECUZIONE_E_TEMPI.md) | Come lanciare test ed esperimenti, con i tempi di esecuzione misurati e stimati |
 | [docs/PIANO_DI_SVILUPPO.md](docs/PIANO_DI_SVILUPPO.md) | Stato delle fasi, esperimenti da eseguire, rischi |
 
 ## Struttura
 
 ```
-src/rsseg/      pacchetto (data, models, ssl, train, eval, cli)
-configs/        base.yaml, smoke.yaml, experiments/, ssl/
-scripts/        griglia di esperimenti della tesi
+src/rsseg/      pacchetto (data, models, ssl, train, eval, campaign, cli)
+configs/        base.yaml, smoke.yaml, datasets/, experiments/, ssl/, campaigns/
+scripts/        griglia della tesi (wrapper della campagna thesis_grid)
 tests/          test automatici (pytest)
 docs/           documentazione
 legacy/         materiale originale 2022 (tesi, slide, codice) — invariato
@@ -138,7 +144,7 @@ reimplementazione verranno pubblicati in `docs/RISULTATI.md`.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                       # 44 test, ~30 s su CPU
+pytest -q                       # 74 test, ~2 min (dettagli e tempi: docs/ESECUZIONE_E_TEMPI.md)
 ruff check src tests && ruff format --check src tests
 ```
 
@@ -169,4 +175,4 @@ Eccezioni:
 ## Ringraziamenti
 
 Prof. Aurelio Uncini, Dr. Simone Scardapane e Dr. Valerio Marsocci per la guida durante la tesi.
-ISPRS per il dataset Potsdam.
+ISPRS per i dataset Potsdam, Vaihingen e Toronto.

@@ -1,0 +1,7 @@
+# RQ1: does the Linear Attention Mechanism (MAResU-Net) beat plain U-Net-like skips?
+name: rq1_attention
+description: MAResU-Net (LAM skips) vs U-Net-like identity skips, ResNet-18 ImageNet, Potsdam.
+seeds: [0, 1, 2]
+runs:
+  - config: configs/experiments/maresunet_r18_imagenet.yaml
+  - config: configs/experiments/unet_r18_imagenet.yaml

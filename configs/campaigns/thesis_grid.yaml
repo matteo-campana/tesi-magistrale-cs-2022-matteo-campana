@@ -1,0 +1,21 @@
+# Thesis grid (RQ1-RQ3 of 2022): {MAResU-Net, MAResU-Net+VQ} x {R18, R34} x {ImageNet, DINO} on Potsdam.
+#   rsseg campaign configs/campaigns/thesis_grid.yaml [--dry-run | --quick]
+name: thesis_grid
+description: MAResU-Net and MAResU-Net+VQ, ResNet-18/34, ImageNet vs DINO pre-training (Potsdam, standard split).
+seeds: [0, 1, 2]
+pretrain:
+  dino_r18: {config: configs/ssl/dino_r18.yaml}
+  dino_r34: {config: configs/ssl/dino_r34.yaml}
+runs:
+  - config: configs/experiments/maresunet_r18_imagenet.yaml
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18
+  - config: configs/experiments/maresunet_r34_imagenet.yaml
+  - config: configs/experiments/maresunet_r34_dino.yaml
+    backbone: dino_r34
+  - config: configs/experiments/maresunet_vq_r18_imagenet.yaml
+  - config: configs/experiments/maresunet_vq_r18_dino.yaml
+    backbone: dino_r18
+  - config: configs/experiments/maresunet_vq_r34_imagenet.yaml
+  - config: configs/experiments/maresunet_vq_r34_dino.yaml
+    backbone: dino_r34

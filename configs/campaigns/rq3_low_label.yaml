@@ -1,0 +1,28 @@
+# RQ3: DINO pre-training (Potsdam crops, + Toronto pool) vs ImageNet with few labels.
+# The 100% points are the plain runs (shared with the other campaigns).
+name: rq3_low_label
+description: Label fraction 1% / 10% / 25% / 100% x ImageNet, DINO (Potsdam), DINO (Potsdam + Toronto).
+seeds: [0, 1, 2]
+pools:
+  toronto: {source: toronto, raw: data/download/Toronto/Images, out: data/unlabeled/toronto}
+pretrain:
+  dino_r18: {config: configs/ssl/dino_r18.yaml}
+  dino_r18_toronto: {config: configs/ssl/dino_r18_toronto.yaml}
+runs:
+  - config: configs/experiments/maresunet_r18_imagenet.yaml
+  - config: configs/experiments/maresunet_r18_imagenet.yaml
+    name: maresunet_r18_imagenet_lf{data.label_fraction}
+    sweep: {data.label_fraction: [0.01, 0.1, 0.25]}
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18
+    name: maresunet_r18_dino_lf{data.label_fraction}
+    sweep: {data.label_fraction: [0.01, 0.1, 0.25]}
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18_toronto
+    name: maresunet_r18_dino_toronto
+  - config: configs/experiments/maresunet_r18_dino.yaml
+    backbone: dino_r18_toronto
+    name: maresunet_r18_dino_toronto_lf{data.label_fraction}
+    sweep: {data.label_fraction: [0.01, 0.1, 0.25]}

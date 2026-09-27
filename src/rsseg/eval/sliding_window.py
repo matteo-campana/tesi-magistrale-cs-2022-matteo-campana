@@ -5,13 +5,16 @@ Tiles are evaluated whole (6000×6000 for Potsdam) instead of pre-cut crops: eve
 scored exactly once, and predictions near crop borders get context from neighbouring windows.
 Softmax probabilities of overlapping windows are blended with a separable Hann-like weight.
 Memory: the probability buffer lives on the CPU (6000² × 6 × 4 B ≈ 0.9 GB), only one batch of
-windows is on the GPU at a time.
+windows is on the GPU at a time, and the forward pass runs under ``torch.no_grad()``: calling a
+Keras model directly on the torch backend otherwise records the autograd graph, which for
+ResNet-34 at 8 × 512² does not fit in 8 GB.
 """
 
 from __future__ import annotations
 
 import keras
 import numpy as np
+import torch
 
 from rsseg.data.prepare import crop_positions
 
@@ -22,12 +25,21 @@ def _window_weight(size: int) -> np.ndarray:
     return np.maximum(w, 1e-3)
 
 
+def infer(model: keras.Model, batch: np.ndarray) -> np.ndarray:
+    """Logits of ``batch`` as NumPy, without building the autograd graph."""
+    with torch.no_grad():
+        return keras.ops.convert_to_numpy(model(batch, training=False))
+
+
+def _softmax(logits: np.ndarray) -> np.ndarray:
+    e = np.exp(logits - logits.max(axis=-1, keepdims=True))
+    return e / e.sum(axis=-1, keepdims=True)
+
+
 def _predict_batch(model: keras.Model, batch: np.ndarray, tta: bool) -> np.ndarray:
-    probs = keras.ops.convert_to_numpy(keras.ops.softmax(model(batch, training=False), axis=-1))
+    probs = _softmax(infer(model, batch))
     if tta:
-        flipped = keras.ops.convert_to_numpy(
-            keras.ops.softmax(model(batch[:, :, ::-1].copy(), training=False), axis=-1)
-        )
+        flipped = _softmax(infer(model, batch[:, :, ::-1].copy()))
         probs = 0.5 * (probs + flipped[:, :, ::-1])
     return probs
 

@@ -251,6 +251,7 @@ def _plan(cfg: DataConfig) -> tuple[dict[str, TileFiles], dict[str, list[str]], 
 def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
     """Run the full preparation; returns the number of crops per split."""
     _, split, jobs = _plan(cfg)
+    ndsm = jobs[0].ndsm if jobs else None
     root = Path(cfg.root)
     root.mkdir(parents=True, exist_ok=True)
 
@@ -277,7 +278,9 @@ def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
         (root / "stats.json").write_text(json.dumps(stats_json, indent=2), encoding="utf-8")
     (root / "split.json").write_text(
         json.dumps({"dataset": cfg.dataset, "protocol": cfg.protocol,
-                    "train_labels": cfg.train_labels, "ndsm": jobs[0].ndsm if jobs else None,
+                    "train_labels": cfg.train_labels, "crop_size": cfg.crop_size,
+                    "train_stride": cfg.train_stride, "ndsm": ndsm,
+                    "ndsm_variant": cfg.ndsm_variant if ndsm == "official" else None,
                     **split}, indent=2),
         encoding="utf-8",
     )  # fmt: skip

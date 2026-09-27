@@ -46,7 +46,8 @@ def test_config_inheritance_and_overrides(tmp_path):
 
 def test_repository_configs_load():
     for path in Path("configs").rglob("*.yaml"):
-        assert isinstance(load_config(path), ExperimentConfig), path
+        if "campaigns" not in path.parts:  # campaign files: see test_campaign.py
+            assert isinstance(load_config(path), ExperimentConfig), path
 
 
 def test_loss_ignores_only_255_and_trains_class_zero():

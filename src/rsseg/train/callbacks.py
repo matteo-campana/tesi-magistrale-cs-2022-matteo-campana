@@ -95,7 +95,9 @@ class PredictionLogger(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         if self.every <= 0 or (epoch + 1) % self.every:
             return
-        logits = keras.ops.convert_to_numpy(self.model(self.images, training=False))
+        from rsseg.eval.sliding_window import infer
+
+        logits = infer(self.model, self.images)
         preds = logits.argmax(-1)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         path = self.out_dir / f"epoch_{epoch + 1:03d}.png"

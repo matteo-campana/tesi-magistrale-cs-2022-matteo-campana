@@ -1,0 +1,16 @@
+# RQ5: accuracy/cost trade-off. Only benchmarks (peak VRAM, images/s, parameters); the accuracy
+# of R18/R34 comes from the thesis grid. A benchmark that runs out of memory is reported as failed.
+name: rq5_efficiency
+description: Parameters, throughput and peak VRAM of the encoders (training step, batch and crop of the configs).
+seeds: [0]
+benchmarks:
+  - {config: configs/experiments/maresunet_r18_imagenet.yaml, name: maresunet_r18}
+  - {config: configs/experiments/maresunet_r34_imagenet.yaml, name: maresunet_r34}
+  - {config: configs/experiments/maresunet_r18_imagenet.yaml, set: [model.arch=resnet50], name: maresunet_r50}
+  - {config: configs/experiments/maresunet_r18_imagenet.yaml, set: [model.arch=resnet50, train.batch_size=4, train.grad_accum_steps=8], name: maresunet_r50_bs4}
+  - {config: configs/experiments/maresunet_vq_r18_imagenet.yaml, name: maresunet_vq_r18}
+  - {config: configs/experiments/maresunet_r18_imagenet_ndsm.yaml, name: maresunet_r18_ndsm}
+  - {config: configs/experiments/maresunet_swin_t_imagenet.yaml, name: maresunet_swin_t}
+  - {config: configs/experiments/maresunet_vit_b_16_imagenet.yaml, name: maresunet_vit_b_16}
+  - {config: configs/ssl/dino_r18.yaml, mode: dino, name: dino_r18}
+  - {config: configs/ssl/dino_r34.yaml, mode: dino, name: dino_r34}

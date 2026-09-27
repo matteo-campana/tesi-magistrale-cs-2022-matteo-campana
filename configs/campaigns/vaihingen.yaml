@@ -1,0 +1,8 @@
+# Second benchmark: RQ1 and RQ6 on Vaihingen (main metric: mIoU without clutter).
+name: vaihingen
+description: MAResU-Net vs U-Net-like and RGB vs RGB + nDSM (computed) on Vaihingen.
+seeds: [0, 1, 2]
+runs:
+  - config: configs/experiments/vaihingen_maresunet_r18_imagenet.yaml
+  - config: configs/experiments/vaihingen_unet_r18_imagenet.yaml
+  - config: configs/experiments/vaihingen_maresunet_r18_imagenet_ndsm.yaml

@@ -12,6 +12,7 @@
     rsseg evaluate  -c CONFIG --weights best.weights.h5    # whole-tile evaluation
     rsseg benchmark -c CONFIG [--mode seg|dino]            # peak GPU memory / speed probe
     rsseg report    RUN_DIRS...                            # mean ± std table over runs
+    rsseg campaign  configs/campaigns/X.yaml [--dry-run]   # many experiments, resumable
     rsseg backbones [--params]                             # available encoders (ResNet, Swin, ViT)
 
 Results are printed as tables (``--json`` for machine-readable output on stdout).
@@ -105,6 +106,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("paths", nargs="+", help="run directories or report.json files")
     p.add_argument("--out", help="write the Markdown table to this file")
 
+    p = add("campaign", help="run (or resume) a campaign of experiments from a YAML file")
+    p.add_argument("path", help="campaign file, e.g. configs/campaigns/rq6_ndsm.yaml")
+    p.add_argument("--dry-run", action="store_true", help="show the plan without running anything")
+    p.add_argument("--quick", action="store_true",
+                   help="tiny runs (1 epoch, 20 steps, 1 test tile) in a separate folder")  # fmt: skip
+    p.add_argument("--only", nargs="+", metavar="GLOB", help="only runs/benchmarks matching")
+    p.add_argument("--seeds", help="comma-separated seeds, overriding the campaign ones")
+    p.add_argument("--root", default="runs/campaigns", help="output root (default runs/campaigns)")
+    p.add_argument("--stop-on-error", action="store_true", help="stop at the first failed step")
+    p.add_argument("--clean-failed", action="store_true",
+                   help="delete the folders of failed attempts before retrying")  # fmt: skip
+    p.add_argument("--ignore-disk", action="store_true", help="run even if disk looks too small")
+
     p = add("backbones", help="list the available encoders")
     p.add_argument(
         "--params", action="store_true", help="also build each encoder and count its parameters"
@@ -156,6 +170,58 @@ def inspection_table(result: dict):
     return table
 
 
+def campaign_plan_table(plan: dict):
+    from rich.table import Table
+
+    table = Table(title=f"campaign {plan['campaign']} — {plan['root']}", title_style="title",
+                  header_style="bold")  # fmt: skip
+    for col in ("kind", "id", "state"):
+        table.add_column(col, style="key" if col == "id" else None)
+    for p in plan["pools"]:
+        table.add_row("pool", p["pool"], p["action"])
+    for d in plan["data"]:
+        table.add_row("data", d["root"] + (" (+nDSM)" if d["ndsm"] else ""), d["action"])
+    for s in plan["steps"]:
+        table.add_row(s["kind"], s["id"], "[muted]done[/]" if s["state"] == "done" else s["state"])
+    return table
+
+
+def run_campaign_command(args) -> int:
+    from rsseg.campaign import (
+        CampaignError,
+        Options,
+        load_campaign,
+        plan_campaign,
+        run_campaign,
+        select,
+    )
+
+    opts = Options(root=args.root, quick=args.quick, dry_run=args.dry_run,
+                   stop_on_error=args.stop_on_error, clean_failed=args.clean_failed,
+                   ignore_disk=args.ignore_disk)  # fmt: skip
+    seeds = [int(x) for x in args.seeds.split(",")] if args.seeds else None
+    try:
+        campaign = select(load_campaign(args.path, seeds), args.only)
+        with err_console.status("planning the campaign…"):
+            plan = result = plan_campaign(campaign, opts)
+        if not args.json:
+            console.print(campaign_plan_table(result))
+            console.print(f"pending {result['pending']}, done {result['done']} — disk needed "
+                          f"~{result['disk_needed_gb']} GB (free {result['disk_free_gb']} GB) — "
+                          f"estimated time {result['eta']}")  # fmt: skip
+        if not args.dry_run:
+            result = run_campaign(campaign, opts, echo=err_console.print, plan=plan)
+    except CampaignError as e:
+        err_console.print(f"[red]campaign error:[/] {e}")
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    elif not args.dry_run:
+        console.print(f"[metric]campaign {campaign.name}[/]: {result['counts']} — report: "
+                      f"[key]{result['report']}[/]")  # fmt: skip
+    return 0 if args.dry_run or not {"failed", "blocked"} & set(result["counts"]) else 1
+
+
 def _print_result(result, title: str, as_json: bool) -> None:
     if as_json:
         print(json.dumps(result, indent=2, default=str))
@@ -188,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
         console.print(backbones_table(args.params))
         return 0
 
+    if args.command == "campaign":
+        return run_campaign_command(args)
+
     if args.command == "report":
         from rsseg.eval.report import aggregate_reports
 
@@ -196,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
             files += sorted(p.rglob("report.json")) if p.is_dir() else [p]
         table = aggregate_reports(files)
         if args.out:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
             Path(args.out).write_text(table, encoding="utf-8")
         if args.json:
             print(table)

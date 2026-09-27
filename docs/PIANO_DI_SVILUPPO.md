@@ -7,14 +7,14 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 
 ## Stato sintetico
 
-| Fase | Codice | Esperimenti su Potsdam |
+| Fase | Codice | Esperimenti su dati reali |
 |---|---|---|
 | F0 Fondamenta | ✅ | — |
-| F1 Pipeline dati | ✅ | 🟡 `rsseg prepare` sul dataset reale |
+| F1 Pipeline dati | ✅ | ✅ Potsdam e Vaihingen preparati, pool Toronto |
 | F2 Baseline MAResU-Net | ✅ | 🟡 |
 | F3 Vector Quantization | ✅ | 🟡 ablation |
 | F4 Pre-training DINO | ✅ | 🟡 |
-| F5 Griglia + ablation | ✅ script | ⬜ |
+| F5 Campagne di esperimenti | ✅ `rsseg campaign` | 🟡 prove `--quick` e benchmark su RTX 4060; campagne complete da lanciare |
 | F6 Report e rilascio | ⬜ | ⬜ |
 | F7 Vaihingen, nDSM, pool DINO | ✅ | 🟡 |
 
@@ -70,9 +70,15 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 - ⬜ Variante densa (loss locale per patch) più adatta alla segmentazione
 
 ## Fase 5: Griglia della tesi e ablation (RQ1–RQ5)
-- ✅ `scripts/run_thesis_grid.sh` (2 × 2 × 2 × seed) e `rsseg report` (media ± std)
+- ✅ `rsseg campaign` con campagne YAML per ogni RQ (`configs/campaigns/`): prerequisiti automatici, store condiviso
+  con ripresa, errori isolati per passo, report per campagna; `scripts/run_thesis_grid.sh` è un wrapper di
+  `thesis_grid.yaml`
 - ⬜ Esecuzione della griglia; ablation LAM/plain, augmentation, CE pesata, `aerial_augment`
-- ⬜ Profilo di efficienza con `rsseg benchmark` (parametri, immagini/s, VRAM) per R18/R34/R50
+- 🟡 Profilo di efficienza: campagna `rq5_efficiency` provata in `--quick` (R50 con batch 8 non entra in 8 GB;
+  aggiunta la variante a batch 4); tempi di test ed esperimenti misurati in [ESECUZIONE_E_TEMPI.md](ESECUZIONE_E_TEMPI.md)
+- ✅ Valutazione su tile sotto `torch.no_grad()`: prima il grafo autograd mandava R34 in OOM e rendeva la
+  valutazione 3 volte più lenta (ViT-B/16: 10 → 0,6 min per tile)
+- ⬜ ViT-B/16 costa ~30 min per epoca su RTX 4060: decidere se ridurre le epoche o escluderlo dalla campagna `transformers`
 
 ## Fase 7: Vaihingen, nDSM e pool non etichettati
 - ✅ Vaihingen come secondo benchmark: split 16/17 (val 11, 30), config `configs/datasets/vaihingen.yaml`,
@@ -95,7 +101,8 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 
 | Rischio | Mitigazione |
 |---|---|
-| 8 GB di VRAM | bf16, accumulo del gradiente, crop 512, `rsseg benchmark` prima dei run lunghi, leve documentate in GPU_LOCALE §4 |
+| 8 GB di VRAM | bf16, accumulo del gradiente, crop 512, `rsseg benchmark` prima dei run lunghi, leve documentate in GPU_LOCALE §4; un OOM ferma solo quel passo della campagna |
+| Tempi lunghi (tutte le campagne ≈ 13 giorni su RTX 4060) | Early stopping, run condivisi tra campagne, `--seeds 0` prima, ordine consigliato in ESECUZIONE_E_TEMPI §4.2 |
 | Channels-last di Keras su backend PyTorch (trasposizioni interne alle conv) | Costo accettabile. Se il profilo lo indica, si può valutare `image_data_format=channels_first`. |
 | Lo split standard non coincide con altre fonti | Lo split è un dato di configurazione, verificato e citato. Il protocollo della tesi resta disponibile. |
 | DINO collassa con pochi dati | `teacher_entropy`, warmup, partenza da ImageNet |

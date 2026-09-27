@@ -1,0 +1,14 @@
+# RQ6: does the nDSM as 4th input channel help, and does its source matter?
+# Every nDSM source needs its own data root (the crops are stored next to the RGB ones).
+name: rq6_ndsm
+description: RGB vs RGB + nDSM (official lastools, official ownapproach, computed from the DSM), Potsdam.
+seeds: [0, 1, 2]
+runs:
+  - config: configs/experiments/maresunet_r18_imagenet.yaml
+  - config: configs/experiments/maresunet_r18_imagenet_ndsm.yaml
+  - config: configs/experiments/maresunet_r18_imagenet_ndsm.yaml
+    name: maresunet_r18_imagenet_ndsm_ownapproach
+    set: [data.ndsm_variant=ownapproach, data.root=data/potsdam_ndsm_ownapproach]
+  - config: configs/experiments/maresunet_r18_imagenet_ndsm.yaml
+    name: maresunet_r18_imagenet_ndsm_computed
+    set: [data.ndsm_source=computed, data.root=data/potsdam_ndsm_computed]

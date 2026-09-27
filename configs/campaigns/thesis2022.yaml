@@ -1,0 +1,6 @@
+# Thesis protocol (2022) for a direct comparison with table 4.5 (mIoU 0.604). Not for conclusions.
+name: thesis2022
+description: Best thesis model on the thesis data protocol (22/6 areas, crop 256, no augmentation, Adam).
+seeds: [0, 1, 2]
+runs:
+  - config: configs/experiments/thesis2022_maresunet_r18_imagenet.yaml
