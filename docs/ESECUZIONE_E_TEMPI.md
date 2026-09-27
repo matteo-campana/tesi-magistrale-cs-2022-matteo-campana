@@ -13,12 +13,15 @@ Legenda: **misurato** = cronometrato su questa macchina; **stima** = calcolato d
 ## 1. Test automatici (pytest)
 
 ```bash
-pytest -q                          # tutti gli 80 test
+pytest -q                          # tutti i 109 test
 pytest -q -k "not end_to_end"      # esclude i 3 test end-to-end più lenti
 pytest -q tests/test_isprs.py      # un solo file
 pytest -q --durations=10           # mostra i test più lenti
 ruff check src tests && ruff format --check src tests   # stile e lint (pochi secondi)
 ```
+
+I test della GUI richiedono `pip install -e ".[gui]"` (altrimenti sono saltati) e, su Linux senza display,
+`QT_QPA_PLATFORM=offscreen`. I tempi dei nuovi file (CPU) sono misurati su una macchina senza GPU con 4 core.
 
 I test non usano i dati ISPRS reali: generano tile sintetiche in cartelle temporanee. Non toccano `runs/`, `data/`
 né `mlflow.db`.
@@ -36,7 +39,11 @@ né `mlflow.db`.
 | `tests/test_isprs.py` | layout reali, etichette corrotte, Vaihingen, nDSM, eroded, pool, training con nDSM | 25 s |
 | `tests/test_models.py` | equivalenza con torchvision, LAM, VQ, encoder a 4 canali | 20 s |
 | `tests/test_training.py` | loss, metriche, scheduler, DINO, finestra scorrevole, top-k, training end-to-end | 30 s |
-| `tests/test_campaign.py` | campagne con runner finto + una campagna reale con 3 sottoprocessi | 74 s |
+| `tests/test_campaign.py` | campagne con runner finto (anche in pausa) + una campagna reale con 3 sottoprocessi | 74 s |
+| `tests/test_resume.py` | pausa e ripresa esatta di training e DINO, stop, file di controllo | ~45 s (CPU) |
+| `tests/test_predict.py` | `rsseg predict` su tile con ground truth e su immagini | ~10 s (CPU) |
+| `tests/test_gui_core.py` | job staccati, coda, tempi, GPU, suggerimenti, run (senza Qt) | ~2 s (CPU) |
+| `tests/test_gui.py` | pagine Qt senza display; job reale messo in pausa e ripreso dopo un "riavvio" dell'app | ~45 s (CPU) |
 
 I tre test più lenti: la campagna reale (60 s), il training + DINO end-to-end (13 s) e il training con nDSM (10 s).
 Ogni file lanciato da solo costa qualche secondo in più per l'import di PyTorch e Keras.
