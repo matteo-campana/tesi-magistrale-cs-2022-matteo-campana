@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,12 +19,14 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QPushButton,
     QStackedWidget,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
+from rsseg.gui import theme
 from rsseg.gui.context import AppContext
 from rsseg.gui.core import gpu as gpucore
 from rsseg.gui.core.timing import fmt_clock
@@ -142,18 +144,17 @@ class WaitDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, ctx: AppContext):
+    def __init__(self, ctx: AppContext, settings: QSettings | None = None):
         super().__init__()
         self.ctx = ctx
+        self.settings = settings or QSettings("rsseg", "rsseg-gui")
         self.setWindowTitle(f"rsseg — segmentazione di immagini aeree · {ctx.root.name}")
         self.resize(1400, 900)
 
         self.nav = QListWidget()
-        self.nav.setFixedWidth(190)
+        self.nav.setObjectName("nav")
+        self.nav.setFixedWidth(theme.em(self.nav, 24))
         self.nav.setIconSize(QSize(1, 1))
-        self.nav.setStyleSheet(
-            "QListWidget { font-size: 14px; } QListWidget::item { padding: 8px; }"
-        )
         self.stack = QStackedWidget()
         self.pages: dict[str, QWidget] = {}
         factories = {"dashboard": DashboardPage, "config": ConfigPage, "jobs": JobsPage,
@@ -181,8 +182,15 @@ class MainWindow(QMainWindow):
         self.gpu_status.clicked.connect(lambda: self.show_page("gpu"))
         self.jobs_status = QLabel()
         self.jobs_status.setToolTip("Job attivi e ora prevista di fine dell'ultimo job in coda")
+        self.theme_button = QPushButton()
+        self.theme_button.setObjectName("themeToggle")
+        self.theme_button.setCursor(Qt.PointingHandCursor)
+        self.theme_button.clicked.connect(self.toggle_theme)
         self.statusBar().addPermanentWidget(self.jobs_status)
         self.statusBar().addPermanentWidget(self.gpu_status)
+        self.statusBar().addPermanentWidget(self.theme_button)
+        self._theme_button()
+        theme.on_palette_changed(lambda _p: self._theme_button())
         ctx.status_message.connect(lambda m: self.statusBar().showMessage(m, 8000))
         ctx.gpu_sampled.connect(self._gpu)
         ctx.torch_checked.connect(lambda _: self._gpu(ctx.samples))
@@ -230,6 +238,25 @@ class MainWindow(QMainWindow):
         v.addWidget(t)
         d.resize(640, 420)
         d.exec()
+
+    # ------------------------------------------------------------------ theme
+    def toggle_theme(self) -> None:
+        """Switch between the dark and the light theme, live, and remember the choice."""
+        other = theme.LIGHT if theme.palette().is_dark else theme.DARK
+        theme.save_palette(other, self.settings)
+        app = QApplication.instance()
+        theme.apply_theme(app, other)
+        app.setWindowIcon(theme.app_icon())
+
+    def _theme_button(self) -> None:
+        dark = theme.palette().is_dark
+        self.theme_button.setIcon(theme.action_icon("sun" if dark else "moon"))
+        self.theme_button.setIconSize(theme.icon_size(self.theme_button))
+        self.theme_button.setText("Tema chiaro" if dark else "Tema scuro")
+        self.theme_button.setToolTip(
+            f"Passa al tema {'chiaro' if dark else 'scuro'}. La scelta viene ricordata alla "
+            "prossima apertura; all'inizio l'app è sempre in tema scuro."
+        )
 
     # ------------------------------------------------------------------ status bar
     def _gpu(self, samples) -> None:
@@ -303,9 +330,11 @@ def run_app(root: str | Path | None = None, argv: list[str] | None = None) -> in
 
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("rsseg")
-    app.setStyle("Fusion")
+    settings = QSettings("rsseg", "rsseg-gui")
+    theme.apply_theme(app, theme.saved_palette(settings))
+    app.setWindowIcon(theme.app_icon())
     ctx = AppContext(root or Path.cwd())
     ctx.store.refresh()
-    window = MainWindow(ctx)
+    window = MainWindow(ctx, settings)
     window.show()
     return app.exec()
