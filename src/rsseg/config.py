@@ -48,6 +48,10 @@ class DataConfig:
     """Stride of training crops. Overlap is allowed only inside the training split."""
     label_fraction: float = 1.0
     """Fraction of labelled training crops (sampled per tile) — low-label regime for RQ3."""
+    full_length_epochs: bool = True
+    """With ``label_fraction`` < 1, cycle the labelled crops (reshuffled at every pass) so that an
+    epoch has as many batches as with all labels: every fraction gets the same number of
+    optimizer updates and the same early stopping in epochs. ``false`` = one pass per epoch."""
     augment: bool = True
     num_workers: int = 4
     prepare_workers: int = 4

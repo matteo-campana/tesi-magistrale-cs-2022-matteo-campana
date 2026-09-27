@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import dataclasses
 import json
 from pathlib import Path
 
@@ -13,7 +14,13 @@ from rsseg.data.classes import (
     legacy_to_index,
     rgb_to_index,
 )
-from rsseg.data.datasets import CropDataset, read_crops, read_tiles, subsample_per_tile
+from rsseg.data.datasets import (
+    CropDataset,
+    read_crops,
+    read_tiles,
+    segmentation_loaders,
+    subsample_per_tile,
+)
 from rsseg.data.prepare import crop_positions, load_mask
 from rsseg.data.splits import STANDARD_TEST, STANDARD_TRAIN, THESIS2022_REMOVED, get_split
 from rsseg.data.transforms import JointAugment, MultiCropAugment
@@ -95,6 +102,21 @@ def test_subsample_per_tile_keeps_every_tile():
     kept = subsample_per_tile(rows, 0.1, seed=0)
     assert {r["tile"] for r in kept} == {"a", "b"} and len(kept) == 2
     assert subsample_per_tile(rows, 0.1, seed=0) == kept
+
+
+def test_low_label_epochs_keep_the_full_length(synthetic_dataset):
+    cfg, _ = synthetic_dataset
+    n_all = len(read_crops(cfg.root, "train"))
+    full, _ = segmentation_loaders(cfg, batch_size=8)
+    low = dataclasses.replace(cfg, label_fraction=0.25)
+    cycled, _ = segmentation_loaders(low, batch_size=8)
+    assert len(full) == len(cycled) == n_all // 8
+    one_pass, _ = segmentation_loaders(dataclasses.replace(low, full_length_epochs=False), 8)
+    labelled = len(one_pass.dataset)
+    assert labelled < n_all and len(one_pass) == labelled // 8
+    # the cycled epoch only uses the labelled crops, each about n_all / labelled times
+    order = list(iter(cycled.sampler))
+    assert len(order) == n_all and set(order) == set(range(labelled))
 
 
 def test_multicrop_shapes():

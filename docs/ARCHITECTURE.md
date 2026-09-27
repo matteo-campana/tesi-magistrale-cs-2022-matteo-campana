@@ -110,7 +110,7 @@ flowchart LR
 │       ├── visualize.py          # pannelli TOP | GT | pred | errori
 │       └── benchmark.py          # picco VRAM e throughput di una configurazione
 ├── scripts/run_thesis_grid.sh    # wrapper di rsseg campaign configs/campaigns/thesis_grid.yaml
-├── tests/                        # 78 test (unit + end-to-end su dati sintetici)
+├── tests/                        # 79 test (unit + end-to-end su dati sintetici)
 ├── docs/
 └── legacy/                       # materiale originale 2022, invariato
 ```
@@ -140,6 +140,8 @@ flowchart LR
   primo layer del backbone applica media e deviazione standard ImageNet. L'inferenza quindi non può dimenticare
   la normalizzazione (bug S4 del 2022).
 - **`label_fraction`** campiona i crop etichettati **per tile** con seed fisso, per il regime a poche etichette (RQ3).
+  Con `full_length_epochs` (default) un `RandomSampler` ripete i crop etichettati fino alla lunghezza di un'epoca
+  con tutte le etichette: ogni frazione ha lo stesso numero di aggiornamenti dei pesi.
 
 ### 4.2 Modelli (`rsseg.models`)
 

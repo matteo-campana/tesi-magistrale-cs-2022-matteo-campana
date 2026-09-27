@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, RandomSampler
 
 from rsseg.config import DataConfig
 from rsseg.data.prepare import read_csv
@@ -123,12 +123,24 @@ def _worker_init(worker_id: int) -> None:
 
 
 def make_loader(
-    dataset: Dataset, batch_size: int, shuffle: bool, num_workers: int, drop_last: bool = False
+    dataset: Dataset,
+    batch_size: int,
+    shuffle: bool,
+    num_workers: int,
+    drop_last: bool = False,
+    num_samples: int | None = None,
 ) -> DataLoader:
+    """``num_samples`` (with ``shuffle``) draws that many samples per epoch, cycling the dataset
+    in a new random order at every pass."""
+    sampler = None
+    if num_samples is not None:
+        sampler = RandomSampler(dataset, replacement=False, num_samples=num_samples)
+        shuffle = False
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
+        sampler=sampler,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
         drop_last=drop_last,
@@ -140,7 +152,9 @@ def make_loader(
 def segmentation_loaders(
     cfg: DataConfig, batch_size: int, seed: int = 0
 ) -> tuple[DataLoader, DataLoader]:
-    train_rows = subsample_per_tile(read_crops(cfg.root, "train"), cfg.label_fraction, seed)
+    all_rows = read_crops(cfg.root, "train")
+    train_rows = subsample_per_tile(all_rows, cfg.label_fraction, seed)
+    num_samples = len(all_rows) if cfg.full_length_epochs and cfg.label_fraction < 1 else None
     val_rows = read_crops(cfg.root, "val")
     train_ds = CropDataset(
         cfg.root, train_rows, JointAugment(cfg.crop_size) if cfg.augment else None, cfg.ndsm
@@ -148,7 +162,12 @@ def segmentation_loaders(
     val_ds = CropDataset(cfg.root, val_rows, None, cfg.ndsm)
     return (
         make_loader(
-            train_ds, batch_size, shuffle=True, num_workers=cfg.num_workers, drop_last=True
+            train_ds,
+            batch_size,
+            shuffle=True,
+            num_workers=cfg.num_workers,
+            drop_last=True,
+            num_samples=num_samples,
         ),
         make_loader(val_ds, batch_size, shuffle=False, num_workers=cfg.num_workers),
     )

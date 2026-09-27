@@ -251,3 +251,16 @@ dichiarato transduttivo.
 Per la RQ3 la configurazione accetta `data.label_fraction`, per esempio `label_fraction ∈ {0.01, 0.1, 0.25, 1.0}`: il sottoinsieme di crop
 etichettati è campionato **per tile** con seed fisso. Il pre-training DINO usa comunque tutte le immagini di
 training, senza etichette, più gli eventuali pool del §8.
+
+**Stesso budget di iterazioni per ogni frazione.** Con `data.full_length_epochs: true` (default) i crop etichettati
+vengono ripetuti, rimescolati a ogni passata, fino ad avere per epoca tanti batch quanti con il 100% delle etichette
+(396 su Potsdam). Ogni frazione riceve così lo stesso numero di aggiornamenti dei pesi (~9.900 in 100 epoche) e lo
+stesso early stopping in epoche. Senza questa opzione un'epoca con l'1% delle etichette (22 crop) avrebbe 2 batch:
+circa 50 aggiornamenti in 100 epoche, e il confronto tra pre-training misurerebbe soprattutto il sotto-addestramento.
+
+| `label_fraction` | Crop etichettati | Batch per epoca (`full_length_epochs: true`) | Con `false` |
+|---|---|---|---|
+| 1,0 | 3168 | 396 | 396 |
+| 0,25 | 792 | 396 | 99 |
+| 0,1 | 308 | 396 | 38 |
+| 0,01 | 22 | 396 | 2 |

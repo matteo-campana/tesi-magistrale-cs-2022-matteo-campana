@@ -13,7 +13,7 @@ Legenda: **misurato** = cronometrato su questa macchina; **stima** = calcolato d
 ## 1. Test automatici (pytest)
 
 ```bash
-pytest -q                          # tutti i 78 test
+pytest -q                          # tutti i 79 test
 pytest -q -k "not end_to_end"      # esclude i 3 test end-to-end più lenti
 pytest -q tests/test_isprs.py      # un solo file
 pytest -q --durations=10           # mostra i test più lenti
@@ -104,12 +104,13 @@ probabilmente usa anche la memoria condivisa di sistema. Su questa GPU non è pr
 | ViT-B/16 | **~30 h** | **~50 h** |
 | R18 su Vaihingen | ~0,9 h | ~1,4 h |
 | `thesis2022` (senza early stopping, crop 256) | ~4,8 h | ~4,8 h |
-| R18 con `label_fraction` 0,01 / 0,1 / 0,25 | — | ~0,4 / 0,8 / 1,5 h |
+| R18 con `label_fraction` 0,01 / 0,1 / 0,25 | ~3,0 h | ~4,8 h |
 | DINO R18 / R18 + Toronto / R34 / ViT-S (100 epoche fisse) | ~1,2 / 2,8 / 2,0 / 1,3 h | uguale |
 | `rsseg benchmark` | ~0,5 min | ~0,5 min |
 
-Con poche etichette le epoche sono corte: 2, 38 o 99 passi per `label_fraction` 0,01, 0,1 o 0,25, e la
-validation pesa di più.
+Con poche etichette le epoche hanno comunque 396 passi: i crop etichettati vengono ripetuti per dare a ogni
+frazione lo stesso numero di aggiornamenti dei pesi (`data.full_length_epochs`, vedi [DATASET.md](DATASET.md) §10).
+Con meno etichette l'early stopping può però intervenire prima.
 
 ## 4. Campagne
 
@@ -135,12 +136,12 @@ epoche); "massimo" usa tutte le 100 epoche. Sono stime: dopo i primi run complet
 | `vaihingen` | 3 config × 3 seed | 9 | ~8 h | ~13 h |
 | `thesis2022` | 1 config × 3 seed (+ prepare) | 3 | ~15 h | ~15 h |
 | `rq1_attention` | 2 config × 3 seed | 6 | ~18 h | ~29 h |
-| `rq4_aerial` | 2 DINO + 4 config × 3 seed | 14 | ~25 h | ~36 h |
+| `rq4_aerial` | 2 DINO + 4 config × 3 seed | 14 | ~32 h | ~48 h |
 | `rq6_ndsm` | 3 config × 3 seed (+ 1 prepare) | 9 | ~27 h | ~44 h |
-| `rq3_low_label` | 2 DINO + 12 config × 3 seed | 38 | ~55 h | ~72 h |
+| `rq3_low_label` | 2 DINO + 12 config × 3 seed | 38 | ~112 h | ~177 h |
 | `thesis_grid` | 2 DINO + 8 config × 3 seed | 26 | ~79 h | ~125 h |
 | `transformers` | 1 DINO + 3 config × 3 seed | 10 | ~120 h (~30 h senza ViT-B) | ~195 h (~47 h senza ViT-B) |
-| `all` | tutto, run in comune eseguiti una volta | 105 | **~13 giorni** (~9 senza ViT-B) | ~20 giorni (~14 senza ViT-B) |
+| `all` | tutto, run in comune eseguiti una volta | 105 | **~16 giorni** (~12 senza ViT-B) | ~25 giorni (~19 senza ViT-B) |
 
 I run in comune tra campagne (ad esempio `maresunet_r18_imagenet`, presente in RQ1, RQ3, RQ6 e nella griglia)
 vengono addestrati una volta sola: lanciare prima `rq1_attention` accorcia le campagne successive.
@@ -152,7 +153,7 @@ Dalle campagne che rispondono prima alle domande principali a quelle più lunghe
 1. `rq5_efficiency` (minuti): conferma memoria e velocità sulla tua macchina.
 2. `rq1_attention` (~18 h): baseline MAResU-Net R18, riusata da quasi tutte le altre.
 3. `vaihingen` (~8 h) e `rq6_ndsm` (~27 h): secondo dataset e nDSM.
-4. `rq3_low_label` (~55 h) e `rq4_aerial` (~25 h): DINO; condividono `dino_r18` e `maresunet_r18_dino`.
+4. `rq3_low_label` (~112 h) e `rq4_aerial` (~32 h): DINO; condividono `dino_r18` e `maresunet_r18_dino`.
 5. `thesis_grid` (~79 h, meno i run già fatti) e `thesis2022` (~15 h): confronto con la tesi.
 6. `transformers` (~30 h senza ViT-B): conviene escludere ViT-B/16 con `--only` (§5).
 
