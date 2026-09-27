@@ -147,7 +147,8 @@ class ResumeCheckpoint(keras.callbacks.Callback):
         self._carry: dict | None = None
         if state:
             sampler.position = state["position"]
-            progress.report(active_before_s=self.active_before)
+            progress.report(active_before_s=self.active_before,
+                            resumed_from_epoch=state["epoch"] + state["batch"] / max(steps, 1))  # fmt: skip
 
     # -- state of the other callbacks -------------------------------------------------------
     def _callback_states(self) -> dict:

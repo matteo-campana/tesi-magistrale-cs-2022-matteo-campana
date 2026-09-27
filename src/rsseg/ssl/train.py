@@ -67,7 +67,7 @@ def pretrain_dino(cfg: ExperimentConfig, resume: str | Path | None = None) -> di
     state = resume_mod.load(resume) if resume else None
     precision = setup_runtime(s.precision, s.seed)
     run_dir = Path(resume) if resume else make_run_dir(cfg, "dino")
-    progress.report(run_dir=str(run_dir), kind="dino", name=cfg.name)
+    progress.report(run_dir=str(Path(run_dir).resolve()), kind="dino", name=cfg.name)
 
     # Only training tiles are used (no labels are read): val/test stay untouched.
     rows = read_crops(cfg.data.root, "train") + pool_rows(cfg)

@@ -814,6 +814,12 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
         t0 = time.time()
         stdout = d / "stdout.json" if step.kind == "benchmark" else None
         (d / progress.FILE_NAME).unlink(missing_ok=True)
+        pending_s = [_finite(estimator.seconds(t.kind, t.cfg)) for t in timed[index - 1 :]]
+        progress.report(phase="campaign", stage=step.id, step_kind=step.kind, done=index - 1,
+                        total=len(to_run), campaign_dir=cdir.as_posix(),
+                        step_progress=(d / progress.FILE_NAME).as_posix(),
+                        step_log=entry["log"], step_started=t0, step_estimate_s=pending_s[0],
+                        remaining_estimate_s=sum(x for x in pending_s if x is not None))  # fmt: skip
         running = Running(timed[index - 1], index, len(to_run), t0, d / progress.FILE_NAME,
                           d / "log.txt", timed[index:], estimator, t_start)  # fmt: skip
         with watch(running) if watch else nullcontext():
@@ -852,6 +858,7 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
                 raise CampaignError(f"{step.kind} {step.id} failed (log: {entry['log']})")
         save()
 
+    progress.report(done=len(to_run), total=len(to_run))
     summary = save()
     report = write_campaign_report(c, layout, status)
     summary["report"] = report.as_posix()

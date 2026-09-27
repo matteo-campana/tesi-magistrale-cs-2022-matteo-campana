@@ -73,7 +73,7 @@ def predict_images(
     setup_runtime(cfg.train.precision, cfg.train.seed)
     window, stride = window or cfg.eval.window, stride or cfg.eval.stride
     batch_size = batch_size or cfg.eval.batch_size
-    out = Path(out)
+    out = Path(out).resolve()  # predictions.json lists absolute paths
     out.mkdir(parents=True, exist_ok=True)
     progress.report(phase="startup", stage="model", run_dir=str(out), kind="predict",
                     name=cfg.name)  # fmt: skip
@@ -123,7 +123,7 @@ def predict_images(
         counts = np.bincount(pred.reshape(-1), minlength=NUM_CLASSES)
         entry = {
             "name": it["name"],
-            "image": it["image"],
+            "image": str(Path(it["image"]).resolve()),
             "pred": f"{base}_pred.png",
             "color": f"{base}_color.png",
             "confidence": f"{base}_confidence.png",
@@ -139,7 +139,7 @@ def predict_images(
             cm = confusion_matrix_np(gt, pred, NUM_CLASSES)
             total_cm += cm
             Image.fromarray(error_map(gt, pred)).save(f"{base}_errors.png")
-            entry |= {"mask": it["mask"], "errors": f"{base}_errors.png",
+            entry |= {"mask": str(Path(it["mask"]).resolve()), "errors": f"{base}_errors.png",
                       "scores": scores_from_confusion(cm), "confusion_matrix": cm.tolist()}  # fmt: skip
         results.append(entry)
         log.info("%s: %d×%d in %.1f s", it["name"], *pred.shape, entry["seconds"])

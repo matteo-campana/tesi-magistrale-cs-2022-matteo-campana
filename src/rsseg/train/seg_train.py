@@ -103,7 +103,7 @@ def train_segmentation(cfg: ExperimentConfig, resume: str | Path | None = None) 
     cfg = dataclasses.replace(cfg, model=model_config(cfg))  # recorded in the run config
     precision = setup_runtime(cfg.train.precision, cfg.train.seed)
     run_dir = Path(resume) if resume else make_run_dir(cfg, "seg")
-    progress.report(run_dir=str(run_dir), kind="seg", name=cfg.name)
+    progress.report(run_dir=str(Path(run_dir).resolve()), kind="seg", name=cfg.name)
     train_loader, val_loader = segmentation_loaders(cfg.data, cfg.train.batch_size, cfg.train.seed)
     stream = train_loader.sampler
     steps = cfg.train.steps_per_epoch or stream.batches_per_pass
@@ -237,7 +237,7 @@ def evaluate_segmentation(cfg: ExperimentConfig, weights: str) -> dict:
     # The encoder weights come from the checkpoint: skip downloading ImageNet weights.
     model = build_segmentor(dataclasses.replace(cfg.model, weights="none"))
     model.load_weights(weights)
-    progress.report(run_dir=str(run_dir), kind="eval", name=cfg.name)
+    progress.report(run_dir=str(Path(run_dir).resolve()), kind="eval", name=cfg.name)
     with mlflow_run(cfg, "eval", run_dir) as run:
         mlflow.log_param("eval.weights", weights)
         report = evaluate_tiles(model, cfg.data.root, cfg.eval, out_dir=run_dir)
