@@ -14,13 +14,17 @@ import keras
 import mlflow
 import numpy as np
 
+from rsseg import progress
 from rsseg.config import ExperimentConfig, ModelConfig, TrainConfig
+from rsseg.control import PauseRequested
 from rsseg.data.datasets import segmentation_loaders
 from rsseg.eval.report import evaluate_tiles, report_metrics, write_report
 from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.models.segmentor import build_segmentor
+from rsseg.runstate import resume_dir
 from rsseg.runtime import setup_runtime
 from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
+from rsseg.train import resume as resume_mod
 from rsseg.train.callbacks import (
     CodebookMonitor,
     PredictionLogger,
@@ -92,13 +96,20 @@ def make_optimizer(cfg: TrainConfig) -> keras.optimizers.Optimizer:
     raise ValueError(f"unknown optimizer {cfg.optimizer!r}")
 
 
-def train_segmentation(cfg: ExperimentConfig) -> dict:
+def train_segmentation(cfg: ExperimentConfig, resume: str | Path | None = None) -> dict:
+    """Train, then evaluate on whole tiles. ``resume`` continues a paused run (its directory);
+    ``cfg`` must then be the configuration saved in it (``<run>/config.yaml``)."""
+    state = resume_mod.load(resume) if resume else None
     cfg = dataclasses.replace(cfg, model=model_config(cfg))  # recorded in the run config
     precision = setup_runtime(cfg.train.precision, cfg.train.seed)
-    run_dir = make_run_dir(cfg, "seg")
+    run_dir = Path(resume) if resume else make_run_dir(cfg, "seg")
+    progress.report(run_dir=str(run_dir), kind="seg", name=cfg.name)
     train_loader, val_loader = segmentation_loaders(cfg.data, cfg.train.batch_size, cfg.train.seed)
+    stream = train_loader.sampler
+    steps = cfg.train.steps_per_epoch or stream.batches_per_pass
 
-    model = build_segmentor(cfg.model)
+    # A resumed model gets every variable from the checkpoint: skip the pre-trained weights.
+    model = build_segmentor(dataclasses.replace(cfg.model, weights="none") if resume else cfg.model)
     model.compile(
         optimizer=make_optimizer(cfg.train),
         loss=MaskedSparseCrossEntropy(cfg.model.num_classes, class_weights=cfg.train.class_weights),
@@ -110,59 +121,91 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
     ref_masks = np.asarray(ref_masks[:4])
     best_path = run_dir / "best.weights.h5"
 
+    top_k = TopKCheckpoint(run_dir / "checkpoints", best_path, k=cfg.train.keep_top_k)
+    metrics_logger = MLflowMetricsLogger()
+    reporter = ProgressReporter("train", "val_miou", cfg.train.early_stopping_patience,
+                                epochs=cfg.train.epochs, steps=steps)  # fmt: skip
+    tracked = {"top_k": top_k, "mlflow": metrics_logger, "progress": reporter}
     callbacks = [
         keras.callbacks.LearningRateScheduler(lambda epoch: lr_at_epoch(cfg.train, epoch)),
-        TopKCheckpoint(run_dir / "checkpoints", best_path, k=cfg.train.keep_top_k),
+        top_k,
         CodebookMonitor(),
         GPUMemoryLogger(),
         PredictionLogger(
             ref_images, ref_masks, run_dir / "predictions", every=cfg.train.log_images_every
         ),
-        keras.callbacks.CSVLogger(str(run_dir / "history.csv")),
-        MLflowMetricsLogger(),
-        RichProgressBar(keys=("loss", "miou")),
-        ProgressReporter("train", "val_miou", cfg.train.early_stopping_patience),
+        keras.callbacks.CSVLogger(str(run_dir / "history.csv"), append=bool(resume)),
+        metrics_logger,
+        RichProgressBar(keys=("loss", "miou"), epochs=cfg.train.epochs),
+        reporter,
     ]
     if cfg.train.early_stopping_patience:
-        callbacks.insert(
-            0,
-            keras.callbacks.EarlyStopping(
-                monitor="val_miou", mode="max", patience=cfg.train.early_stopping_patience
-            ),
+        early = keras.callbacks.EarlyStopping(
+            monitor="val_miou", mode="max", patience=cfg.train.early_stopping_patience
         )
+        callbacks.insert(0, early)
+        tracked["early_stopping"] = early
+    checkpoint = resume_mod.ResumeCheckpoint(
+        run_dir, "seg", stream, cfg.train.epochs, steps, cfg.train.checkpoint_every_min,
+        tracked, state if state and state["phase"] == "train" else None,
+    )  # fmt: skip
+    callbacks.append(checkpoint)  # last: see ResumeCheckpoint
+    if state and state["phase"] != "train":  # paused during the evaluation
+        checkpoint.active_before = state.get("active_s", 0.0)
+        progress.report(active_before_s=checkpoint.active_before)
+    eval_state = resume_dir(run_dir) / "evaluation.json"
 
-    with mlflow_run(cfg, "seg", run_dir) as run:
-        mlflow.log_params({"runtime.precision": precision, "model.params": model.count_params()})
-        (run_dir / "model_summary.txt").write_text(_summary(model), encoding="utf-8")
-        mlflow.log_artifact(str(run_dir / "model_summary.txt"))
+    with mlflow_run(cfg, "seg", run_dir, state["run_id"] if state else None) as run:
+        checkpoint.run_id = run.info.run_id
+        if not resume:
+            mlflow.log_params(
+                {"runtime.precision": precision, "model.params": model.count_params()}
+            )
+            (run_dir / "model_summary.txt").write_text(_summary(model), encoding="utf-8")
+            mlflow.log_artifact(str(run_dir / "model_summary.txt"))
 
-        history = model.fit(
-            train_loader,
-            validation_data=val_loader,
-            epochs=cfg.train.epochs,
-            steps_per_epoch=cfg.train.steps_per_epoch,
-            validation_steps=cfg.train.validation_steps,
-            callbacks=callbacks,
-            shuffle=False,  # the DataLoader already shuffles
-            verbose=0,  # progress is shown by RichProgressBar
-        )
-        best_val = max(history.history.get("val_miou", [float("nan")]))
-        mlflow.log_metric("best_val_miou", best_val)
-
+        if state is None or state["phase"] == "train":
+            resume_mod.fit_resumable(
+                model, train_loader, cfg.train.epochs, steps, callbacks, checkpoint, reporter,
+                validation_data=val_loader, validation_steps=cfg.train.validation_steps,
+                shuffle=False,  # the stream sampler already shuffles
+                verbose=0,  # progress is shown by RichProgressBar
+            )  # fmt: skip
+            history = reporter.history
+            val = [h["val_miou"] for h in history if "val_miou" in h]
+            trained = {"best_val_miou": max(val) if val else float("nan"),
+                       "epochs_trained": len(history)}  # fmt: skip
+            mlflow.log_metric("best_val_miou", trained["best_val_miou"])
+            if best_path.exists():
+                mlflow.log_artifact(str(best_path), artifact_path="model")
+                mlflow.log_artifact(
+                    str(run_dir / "checkpoints" / "topk.json"), artifact_path="model"
+                )
+            mlflow.log_metric("epochs_trained", trained["epochs_trained"])
+        else:
+            trained = state["trained"]
+            model.optimizer.build(model.trainable_variables)  # best.weights.h5 includes it
         if best_path.exists():
             model.load_weights(str(best_path))
-            mlflow.log_artifact(str(best_path), artifact_path="model")
-            mlflow.log_artifact(str(run_dir / "checkpoints" / "topk.json"), artifact_path="model")
-        mlflow.log_metric("epochs_trained", len(history.history.get("loss", [])))
         result: dict = {
             "run_id": run.info.run_id,
             "run_dir": str(run_dir),
-            "best_val_miou": best_val,
+            "best_val_miou": trained["best_val_miou"],
             "weights": str(best_path),
         }
 
         if cfg.eval.split:
-            report = evaluate_tiles(model, cfg.data.root, cfg.eval, out_dir=run_dir)
+            try:
+                report = evaluate_tiles(
+                    model, cfg.data.root, cfg.eval, out_dir=run_dir, state_path=eval_state
+                )
+            except PauseRequested:
+                resume_mod.save_phase(run_dir, {
+                    "kind": "seg", "phase": "evaluation", "run_id": run.info.run_id,
+                    "trained": trained, "epoch": cfg.train.epochs, "batch": 0,
+                    "epochs": cfg.train.epochs, "active_s": checkpoint.active_seconds(),
+                })  # fmt: skip
+                raise
             report["name"] = cfg.name
             json_path, md_path = write_report(report, run_dir, f"{cfg.name} — {cfg.eval.split}")
             mlflow.log_metrics(report_metrics(report, cfg.eval.split))
@@ -176,6 +219,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
         (run_dir / "result.json").write_text(
             json.dumps(result, indent=2, default=str), encoding="utf-8"
         )
+    resume_mod.discard(run_dir)
     return result
 
 
@@ -193,6 +237,7 @@ def evaluate_segmentation(cfg: ExperimentConfig, weights: str) -> dict:
     # The encoder weights come from the checkpoint: skip downloading ImageNet weights.
     model = build_segmentor(dataclasses.replace(cfg.model, weights="none"))
     model.load_weights(weights)
+    progress.report(run_dir=str(run_dir), kind="eval", name=cfg.name)
     with mlflow_run(cfg, "eval", run_dir) as run:
         mlflow.log_param("eval.weights", weights)
         report = evaluate_tiles(model, cfg.data.root, cfg.eval, out_dir=run_dir)

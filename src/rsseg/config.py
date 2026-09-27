@@ -126,6 +126,10 @@ class TrainConfig:
     keep_top_k: int = 5
     """Checkpoints kept in ``<run>/checkpoints``: the ``k`` epochs with the highest ``val_miou``."""
     log_images_every: int = 10
+    """Every this many epochs, log predictions on a fixed validation batch (0 = never)."""
+    checkpoint_every_min: float = 15.0
+    """Minutes between automatic resume checkpoints (``<run>/resume``): after a crash or a power
+    loss ``--resume`` loses at most this much work. 0 = only when paused."""
 
 
 @dataclass
@@ -175,6 +179,8 @@ class SSLConfig:
     steps_per_epoch: int | None = None
     export_path: str | None = None
     """Where to save the student backbone (default: ``<run dir>/backbone.weights.h5``)."""
+    checkpoint_every_min: float = 15.0
+    """Minutes between automatic resume checkpoints of the pre-training (0 = only when paused)."""
     extra_pools: list[str] = field(default_factory=list)
     """Unlabelled crop roots made by ``rsseg prepare-unlabeled``, added to the training crops."""
     allow_same_city_pool: bool = False

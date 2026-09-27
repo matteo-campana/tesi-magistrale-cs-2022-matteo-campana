@@ -35,6 +35,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from rsseg import control, progress
 from rsseg.config import DataConfig
 from rsseg.console import track
 from rsseg.data.classes import IGNORE_INDEX, NUM_CLASSES, rgb_to_index
@@ -258,9 +259,10 @@ def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
     crop_rows: list[dict] = []
     tile_rows: list[dict] = []
     acc = None
-    for rows, tile_row, stats in track(
-        _map(_process_tile, jobs, cfg.prepare_workers), "preparing tiles", total=len(jobs)
-    ):
+    tiles_done = progress.tracked(_map(_process_tile, jobs, cfg.prepare_workers), len(jobs),
+                                  phase="prepare", stage="tiles")  # fmt: skip
+    for rows, tile_row, stats in track(tiles_done, "preparing tiles", total=len(jobs)):
+        control.check(pausable=False)
         crop_rows.extend(rows)
         if tile_row:
             tile_rows.append(tile_row)
@@ -327,8 +329,9 @@ def _inspect_tile(job: TileJob) -> dict:
 def inspect_dataset(cfg: DataConfig) -> dict:
     """Dry run of :func:`prepare_dataset`: files chosen for every tile, split and anomalies."""
     tiles, split, jobs = _plan(cfg)
-    rows = list(track(_map(_inspect_tile, jobs, cfg.prepare_workers), "inspecting tiles",
-                      total=len(jobs)))  # fmt: skip
+    inspected = progress.tracked(_map(_inspect_tile, jobs, cfg.prepare_workers), len(jobs),
+                                 phase="prepare", stage="inspection")  # fmt: skip
+    rows = list(track(inspected, "inspecting tiles", total=len(jobs)))
     in_split = {t for s in split.values() for t in s}
     return {"dataset": cfg.dataset, "raw_dir": cfg.raw_dir, "tiles_found": len(tiles),
             "unused_tiles": sorted(set(tiles) - in_split), "tiles": rows,

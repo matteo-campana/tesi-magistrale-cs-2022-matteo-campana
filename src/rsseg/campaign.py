@@ -51,9 +51,10 @@ from pathlib import Path
 
 import yaml
 
-from rsseg import progress
+from rsseg import control, progress
 from rsseg.config import DataConfig, ExperimentConfig, load_config
 from rsseg.eta import Estimator
+from rsseg.runstate import find_resumable, is_resumable
 
 log = logging.getLogger(__name__)
 
@@ -313,10 +314,20 @@ def check_spec(layout: Layout, step: Step) -> None:
             )
 
 
+def resumable_run(layout: Layout, step: Step) -> Path | None:
+    """Run folder of ``step`` paused (or interrupted) with a resume checkpoint, if any."""
+    if step.kind == "benchmark":
+        return None
+    found = find_resumable(layout.step_dir(step))
+    return found[0] if found else None
+
+
 def command(layout: Layout, step: Step, campaign: str, quick: bool) -> list[str]:
     d = layout.step_dir(step).as_posix()
     tags = [f"tracking.tags.campaign={campaign}", f"tracking.tags.run_id={step.id}"]
-    if step.kind == "pretrain":
+    if (run := resumable_run(layout, step)) is not None:
+        args = [step.kind, "--resume", run.as_posix()]
+    elif step.kind == "pretrain":
         args = ["pretrain", "-c", step.config, "--set", *step.overrides, f"output_dir={d}",
                 f"name={step.name}", f"ssl.export_path={layout.backbone(step.id).as_posix()}",
                 *tags, *(QUICK_SSL if quick else [])]  # fmt: skip
@@ -793,7 +804,8 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
         d.mkdir(parents=True, exist_ok=True)
         if opts.clean_failed:
             for old in d.glob("*-*-*"):  # timestamped run folders of failed attempts
-                shutil.rmtree(old, ignore_errors=True)
+                if not is_resumable(old):
+                    shutil.rmtree(old, ignore_errors=True)
         (d / "spec.json").write_text(json.dumps(step.spec(), indent=2), encoding="utf-8")
         index = to_run.index(step) + 1
         echo(f"▶ [{index}/{len(to_run)}] {step.kind} {step.id}  (log: {entry['log']})")
@@ -812,6 +824,15 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
                 code = -1
             else:
                 (d / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if code in (control.EXIT_PAUSED, control.EXIT_STOPPED):
+            state = "paused" if code == control.EXIT_PAUSED else "stopped"
+            outcome = {"state": state, "exit_code": code, "duration_s": round(time.time() - t0)}
+            (d / "outcome.json").write_text(json.dumps(outcome, indent=2), encoding="utf-8")
+            status[step.id] = {**entry, **outcome}
+            echo(f"⏸ {step.kind} {step.id}: {state} — run the campaign again to resume")
+            summary = save()
+            summary["interrupted"] = state
+            return summary
         ok = code == 0 and is_done(layout, step)
         outcome = {"state": "done" if ok else "failed", "exit_code": code,
                    "duration_s": round(time.time() - t0)}  # fmt: skip

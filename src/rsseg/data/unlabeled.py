@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from rsseg import control, progress
 from rsseg.console import track
 from rsseg.data.prepare import _write_csv, crop_positions
 
@@ -120,7 +121,9 @@ def prepare_unlabeled(
     rng = random.Random(seed)
     rows: list[dict] = []
     skipped = 0
-    for frame, path in track(frames, f"cutting {source} frames"):
+    for frame, path in track(progress.tracked(frames, phase="prepare", stage="frames"),
+                             f"cutting {source} frames", total=len(frames)):  # fmt: skip
+        control.check(pausable=False)
         full, overview = read_frame(path)
         lut = stretch_lut(overview)
         Image.fromarray(to_uint8(overview, lut)).save(out / "previews" / f"{frame}.png")

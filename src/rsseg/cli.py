@@ -8,14 +8,19 @@
     rsseg prepare   -c CONFIG --dry-run                    # files, splits and anomalies per tile
     rsseg prepare-unlabeled --source toronto --raw DIR --out DIR   # DINO pool from raw frames
     rsseg train     -c CONFIG [--set k=v ...]              # supervised training (+ test evaluation)
+    rsseg train     --resume RUN_DIR                       # continue a paused run
     rsseg pretrain  -c CONFIG                              # DINO pre-training of the encoder
     rsseg evaluate  -c CONFIG --weights best.weights.h5    # whole-tile evaluation
+    rsseg predict   --run RUN_DIR IMAGES... --out DIR      # segment images with a trained model
     rsseg benchmark -c CONFIG [--mode seg|dino]            # peak GPU memory / speed probe
     rsseg report    RUN_DIRS...                            # mean ± std table over runs
     rsseg campaign  configs/campaigns/X.yaml [--dry-run]   # many experiments, resumable
     rsseg backbones [--params]                             # available encoders (ResNet, Swin, ViT)
 
 Results are printed as tables (``--json`` for machine-readable output on stdout).
+
+A launcher can follow and steer a command through two files (:mod:`rsseg.progress`,
+:mod:`rsseg.control`): a paused command exits with code 10, a stopped one with code 11.
 """
 
 from __future__ import annotations
@@ -93,7 +98,25 @@ def build_parser() -> argparse.ArgumentParser:
         ("train", "train a segmentation model"),
         ("pretrain", "DINO self-supervised pre-training of the encoder"),
     ):
-        _add_config_args(add(name, help=help_))
+        p = add(name, help=help_)
+        _add_config_args(p)
+        p.add_argument("--resume", metavar="RUN_DIR",
+                       help="continue a paused (or interrupted) run from its resume checkpoint; "
+                            "the configuration saved in the run is used")  # fmt: skip
+
+    p = add("predict", help="segment images (or the tiles of a split) with a trained model")
+    p.add_argument("inputs", nargs="*", help="images or folders of images")
+    p.add_argument("--run", help="training run directory (config.yaml + best.weights.h5)")
+    _add_config_args(p)
+    p.add_argument("--weights", help="weights file (default: best.weights.h5 of --run)")
+    p.add_argument("--split", help="predict the tiles of this split of data.root (with labels)")
+    p.add_argument("--ndsm", nargs="*", default=[],
+                   help="nDSM images for a 4-channel model, in the order of the inputs")  # fmt: skip
+    p.add_argument("--out", required=True, help="output folder")
+    p.add_argument("--window", type=int, help="sliding window (default eval.window)")
+    p.add_argument("--stride", type=int, help="stride of the windows (default eval.stride)")
+    p.add_argument("--batch-size", type=int, help="windows per batch (default eval.batch_size)")
+    p.add_argument("--tta", action="store_true", help="test-time augmentation (horizontal flip)")
 
     p = add("evaluate", help="evaluate weights on whole tiles")
     _add_config_args(p)
@@ -266,10 +289,37 @@ def run_campaign_command(args) -> int:
         return 2
     if args.json:
         print(json.dumps(result, indent=2, default=str))
+    elif result.get("interrupted"):
+        console.print(f"[yellow]campaign {campaign.name} {result['interrupted']}[/]: "
+                      f"{result['counts']} — run it again to resume")  # fmt: skip
     elif not args.dry_run:
         console.print(f"[metric]campaign {campaign.name}[/]: {result['counts']} — report: "
                       f"[key]{result['report']}[/]")  # fmt: skip
+    if result.get("interrupted"):
+        from rsseg import control
+
+        return control.EXIT_PAUSED if result["interrupted"] == "paused" else control.EXIT_STOPPED
     return 0 if args.dry_run or not {"failed", "blocked"} & set(result["counts"]) else 1
+
+
+def run_predict_command(args) -> int:
+    from rsseg.eval.predict import predict_images
+
+    if args.run:
+        cfg = load_config(Path(args.run) / "config.yaml", args.set)
+        weights = args.weights or str(Path(args.run) / "best.weights.h5")
+    else:
+        if not (args.config and args.weights):
+            raise SystemExit("predict needs --run RUN_DIR, or -c CONFIG and --weights")
+        cfg, weights = load_config(args.config, args.set), args.weights
+    if not args.inputs and not args.split:
+        raise SystemExit("predict needs images (or folders) or --split")
+    result = predict_images(
+        cfg, weights, args.inputs, args.out, split=args.split, ndsm=args.ndsm,
+        window=args.window, stride=args.stride, batch_size=args.batch_size, tta=args.tta,
+    )  # fmt: skip
+    _print_result(result, f"rsseg predict — {cfg.name}", args.json)
+    return 0
 
 
 def _print_result(result, title: str, as_json: bool) -> None:
@@ -280,9 +330,46 @@ def _print_result(result, title: str, as_json: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from rsseg import control, progress
+
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
+    progress.report(command=args.command, phase="startup")
+    try:
+        code = _run(args)
+    except control.ControlRequest as e:
+        if e.action == "stop" and e.run_dir is not None:
+            import shutil
 
+            from rsseg.runstate import resume_dir
+
+            shutil.rmtree(resume_dir(e.run_dir), ignore_errors=True)
+        state = "paused" if e.action == "pause" else "stopped"
+        progress.finish(state)
+        err_console.print(f"[yellow]{args.command} {state}[/]"
+                          + (f" — resume with `rsseg {args.command} --resume {e.run_dir}`"
+                             if state == "paused" else ""))  # fmt: skip
+        return control.EXIT_PAUSED if state == "paused" else control.EXIT_STOPPED
+    except BaseException as e:
+        progress.finish("failed", error=f"{type(e).__name__}: {e}")
+        raise
+    progress.finish("done" if code == 0 else "failed", exit_code=code)
+    return code
+
+
+def _resume_config(args):
+    from rsseg.runstate import read_state, unsafe_overrides
+
+    run_dir = Path(args.resume)
+    if read_state(run_dir) is None:
+        raise SystemExit(f"no resume checkpoint in {run_dir / 'resume'}")
+    bad = unsafe_overrides(args.set)
+    if bad:
+        raise SystemExit(f"these settings cannot change when a run is resumed: {', '.join(bad)}")
+    return load_config(run_dir / "config.yaml", args.set)
+
+
+def _run(args) -> int:
     if args.command == "synth":
         from rsseg.data.synthetic import make_synthetic_potsdam
 
@@ -327,7 +414,11 @@ def main(argv: list[str] | None = None) -> int:
                 console.print(f"[muted]written to {args.out}[/]")
         return 0
 
-    cfg = load_config(args.config, args.set)
+    if args.command == "predict":
+        return run_predict_command(args)
+
+    resume = getattr(args, "resume", None)
+    cfg = _resume_config(args) if resume else load_config(args.config, args.set)
     if not args.json:
         err_console.print(config_panel(cfg, args.command))
     if args.command == "prepare" and args.dry_run:
@@ -350,11 +441,11 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "train":
         from rsseg.train.seg_train import train_segmentation
 
-        result = train_segmentation(cfg)
+        result = train_segmentation(cfg, resume=resume)
     elif args.command == "pretrain":
         from rsseg.ssl.train import pretrain_dino
 
-        result = pretrain_dino(cfg)
+        result = pretrain_dino(cfg, resume=resume)
     elif args.command == "evaluate":
         from rsseg.train.seg_train import evaluate_segmentation
 

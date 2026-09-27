@@ -12,6 +12,8 @@ ResNet-34 at 8 × 512² does not fit in 8 GB.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import keras
 import numpy as np
 import torch
@@ -52,8 +54,14 @@ def predict_tile(
     stride: int = 256,
     batch_size: int = 8,
     tta: bool = False,
-) -> np.ndarray:
-    """Return the ``(H, W)`` argmax prediction for an ``(H, W, C)`` image (RGB, or RGB + nDSM)."""
+    confidence: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Return the ``(H, W)`` argmax prediction for an ``(H, W, C)`` image (RGB, or RGB + nDSM).
+
+    With ``confidence`` also return the ``(H, W)`` float32 probability of the predicted class.
+    ``on_progress(done, total)`` is called after every batch of windows.
+    """
     if window % 32:
         raise ValueError("window must be a multiple of 32")
     h, w = image.shape[:2]
@@ -78,4 +86,10 @@ def predict_tile(
         for (y, x), p in zip(chunk, out, strict=True):
             probs[y : y + window, x : x + window] += p * win_w
             weights[y : y + window, x : x + window] += win_w
-    return (probs / weights).argmax(-1)[:h, :w].astype(np.uint8)
+        if on_progress is not None:
+            on_progress(min(i + batch_size, len(coords)), len(coords))
+    probs /= weights
+    pred = probs.argmax(-1)[:h, :w].astype(np.uint8)
+    if confidence:
+        return pred, probs.max(-1)[:h, :w]
+    return pred

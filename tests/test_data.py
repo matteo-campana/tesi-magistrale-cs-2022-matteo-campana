@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import dataclasses
+import itertools
 import json
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from rsseg.data.classes import (
 )
 from rsseg.data.datasets import (
     CropDataset,
+    StreamSampler,
     read_crops,
     read_tiles,
     segmentation_loaders,
@@ -110,13 +112,44 @@ def test_low_label_epochs_keep_the_full_length(synthetic_dataset):
     full, _ = segmentation_loaders(cfg, batch_size=8)
     low = dataclasses.replace(cfg, label_fraction=0.25)
     cycled, _ = segmentation_loaders(low, batch_size=8)
-    assert len(full) == len(cycled) == n_all // 8
+    assert full.sampler.batches_per_pass == cycled.sampler.batches_per_pass == n_all // 8
     one_pass, _ = segmentation_loaders(dataclasses.replace(low, full_length_epochs=False), 8)
     labelled = len(one_pass.dataset)
-    assert labelled < n_all and len(one_pass) == labelled // 8
+    assert labelled < n_all and one_pass.sampler.batches_per_pass == labelled // 8
     # the cycled epoch only uses the labelled crops, each about n_all / labelled times
-    order = list(iter(cycled.sampler))
-    assert len(order) == n_all and set(order) == set(range(labelled))
+    order = cycled.sampler.pass_order(0)
+    assert len(order) == n_all // 8 * 8 and set(order) == set(range(labelled))
+
+
+def test_stream_sampler_is_addressed_by_position():
+    s = StreamSampler(10, batch_size=3, seed=5)
+    assert s.pass_length == 9 and s.batches_per_pass == 3
+    stream = list(itertools.islice(iter(s), 30))
+    assert len({i for i, _ in stream[:9]}) == 9 and stream[:9] != stream[9:18]
+    # a new iterator starts at the consumed position: same indices and augmentation seeds
+    s.position = 13
+    assert list(itertools.islice(iter(s), 17)) == stream[13:]
+    # the stream depends only on the seed
+    assert list(itertools.islice(iter(StreamSampler(10, 3, seed=5)), 30)) == stream
+    assert list(itertools.islice(iter(StreamSampler(10, 3, seed=6)), 30)) != stream
+
+
+def test_seeded_augmentation_is_reproducible_and_restores_the_rng():
+    import random
+
+    from rsseg.data.transforms import seeded
+
+    img = np.arange(16 * 16 * 3, dtype=np.uint8).reshape(16, 16, 3)
+    aug = JointAugment(8)
+    random.seed(1)
+    before = random.random()
+    random.seed(1)
+    with seeded(42):
+        a, _ = aug(img, img[..., 0])
+    assert random.random() == before  # the global generator is untouched
+    with seeded(42):
+        b, _ = aug(img, img[..., 0])
+    np.testing.assert_array_equal(a, b)
 
 
 def test_multicrop_shapes():

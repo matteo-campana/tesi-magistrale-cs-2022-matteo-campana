@@ -52,28 +52,51 @@ def environment_info() -> dict[str, str]:
 
 
 @contextmanager
-def mlflow_run(cfg: ExperimentConfig, kind: str, run_dir: Path):
-    """Start an MLflow run, log config/params/environment, yield the active run."""
+def mlflow_run(cfg: ExperimentConfig, kind: str, run_dir: Path, resume_run_id: str | None = None):
+    """Start an MLflow run, log config/params/environment, yield the active run.
+
+    With ``resume_run_id`` the run of a paused command is reopened (parameters are not logged
+    again, the metrics continue). A pause or stop request (:class:`rsseg.control.ControlRequest`)
+    ends the run as ``KILLED`` with the tag ``rsseg.state`` = ``paused``/``stopped``.
+    """
+    from rsseg.control import ControlRequest
+
     uri = cfg.tracking.tracking_uri or os.environ.get("MLFLOW_TRACKING_URI") or DEFAULT_TRACKING_URI
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(cfg.tracking.experiment)
     run_name = cfg.tracking.run_name or f"{kind}-{cfg.name}"
-    with mlflow.start_run(run_name=run_name) as run:
-        mlflow.set_tags(
-            {
-                "kind": kind,
-                **cfg.tracking.tags,
-                **{f"env.{k}": v for k, v in environment_info().items()},
+    if resume_run_id:
+        run_ctx = mlflow.start_run(run_id=resume_run_id)
+    else:
+        run_ctx = mlflow.start_run(run_name=run_name)
+    with run_ctx as run:
+        if resume_run_id:
+            resumes = int(run.data.tags.get("rsseg.resumes", "0")) + 1
+            mlflow.set_tags({"rsseg.resumes": str(resumes), "rsseg.state": "running"})
+            log.info("MLflow run %s (%s) resumed — tracking URI %s", run.info.run_id, run_name, uri)
+        else:
+            mlflow.set_tags(
+                {
+                    "kind": kind,
+                    **cfg.tracking.tags,
+                    **{f"env.{k}": v for k, v in environment_info().items()},
+                }
+            )
+            params = {
+                k: json.dumps(v) if isinstance(v, (list, dict)) else v
+                for k, v in cfg.flat().items()
             }
-        )
-        params = {
-            k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in cfg.flat().items()
-        }
-        mlflow.log_params({k: str(v)[:500] for k, v in params.items()})
-        save_config(cfg, run_dir / "config.yaml")
-        mlflow.log_artifact(str(run_dir / "config.yaml"))
-        log.info("MLflow run %s (%s) — tracking URI %s", run.info.run_id, run_name, uri)
-        yield run
+            mlflow.log_params({k: str(v)[:500] for k, v in params.items()})
+            save_config(cfg, run_dir / "config.yaml")
+            mlflow.log_artifact(str(run_dir / "config.yaml"))
+            log.info("MLflow run %s (%s) — tracking URI %s", run.info.run_id, run_name, uri)
+        try:
+            yield run
+        except ControlRequest as e:
+            mlflow.set_tag("rsseg.state", "paused" if e.action == "pause" else "stopped")
+            mlflow.end_run("KILLED")
+            raise
+        mlflow.set_tag("rsseg.state", "done")
 
 
 def _to_float(value: Any) -> float | None:
@@ -113,16 +136,55 @@ class MLflowMetricsLogger(keras.callbacks.Callback):
 
 
 class GPUMemoryLogger(keras.callbacks.Callback):
-    """Record peak CUDA memory per epoch — useful to size batches on 8 GB cards."""
+    """Record per epoch the peak CUDA memory of this process (to size batches on 8 GB cards)
+    and, when NVML is available (``nvidia-ml-py``), the mean GPU utilisation, the peak memory
+    used on the card by all processes and the peak temperature."""
+
+    def __init__(self, every: int = 10):
+        super().__init__()
+        self.every = every
+        self._nvml = None
+        self._samples: list[tuple[float, float, float]] = []
+
+    def on_train_begin(self, logs=None):
+        import torch
+
+        if self._nvml is None and torch.cuda.is_available():
+            try:
+                import pynvml
+
+                pynvml.nvmlInit()
+                self._nvml = pynvml.nvmlDeviceGetHandleByIndex(torch.cuda.current_device())
+            except Exception:  # noqa: BLE001 - NVML is optional (no library, no driver)
+                self._nvml = False
 
     def on_epoch_begin(self, epoch, logs=None):
         import torch
 
+        self._samples = []
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
+
+    def on_train_batch_end(self, batch, logs=None):
+        if not self._nvml or batch % self.every:
+            return
+        import pynvml
+
+        try:
+            util = pynvml.nvmlDeviceGetUtilizationRates(self._nvml).gpu
+            mem = pynvml.nvmlDeviceGetMemoryInfo(self._nvml).used / 2**30
+            temp = pynvml.nvmlDeviceGetTemperature(self._nvml, pynvml.NVML_TEMPERATURE_GPU)
+        except Exception:  # noqa: BLE001
+            return
+        self._samples.append((float(util), float(mem), float(temp)))
 
     def on_epoch_end(self, epoch, logs=None):
         import torch
 
         if torch.cuda.is_available() and logs is not None:
             logs["gpu_peak_mem_gb"] = torch.cuda.max_memory_allocated() / 2**30
+        if self._samples and logs is not None:
+            util, mem, temp = zip(*self._samples, strict=True)
+            logs["gpu_util_mean"] = float(np.mean(util))
+            logs["gpu_card_mem_peak_gb"] = float(max(mem))
+            logs["gpu_temp_max_c"] = float(max(temp))
