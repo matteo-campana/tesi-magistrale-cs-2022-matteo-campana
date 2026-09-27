@@ -84,8 +84,8 @@ def write_report(report: dict, out_dir: str | Path, title: str) -> tuple[Path, P
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     json_path, md_path = out / "report.json", out / "report.md"
-    json_path.write_text(json.dumps(report, indent=2))
-    md_path.write_text(report_markdown(report, title))
+    json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    md_path.write_text(report_markdown(report, title), encoding="utf-8")
     return json_path, md_path
 
 
@@ -93,7 +93,7 @@ def aggregate_reports(paths: list[Path]) -> str:
     """Mean ± std over several runs (e.g. seeds) of ``report.json`` files, grouped by run name."""
     groups: dict[str, list[dict]] = {}
     for p in paths:
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
         groups.setdefault(data.get("name", p.parent.name), []).append(data)
     lines = [
         "| Run | n | OA | mF1 | mIoU | mIoU (no clutter) |",

@@ -95,6 +95,7 @@ def dino_loss(
         ops.log_softmax(ops.cast(student_logits, "float32") / student_temp, axis=-1),
         (n_views, -1, k),
     )
+    center = ops.convert_to_tensor(center, "float32")
     teacher = ops.softmax((ops.cast(teacher_logits, "float32") - center) / teacher_temp, axis=-1)
     teacher = ops.reshape(ops.stop_gradient(teacher), (n_global, -1, k))
     total = 0.0

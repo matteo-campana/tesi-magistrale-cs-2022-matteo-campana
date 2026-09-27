@@ -89,10 +89,11 @@ def test_channel_attention_reference():
 
 def test_vq_straight_through_gradient_is_identity():
     vq = VectorQuantizer(num_codes=8, ema_decay=0.0)
-    x = torch.randn(2, 3, 3, 4, requires_grad=True)
+    x = ops.convert_to_tensor(np.random.default_rng(0).normal(size=(2, 3, 3, 4)), "float32")
+    x.requires_grad_(True)  # on the Keras default device (CPU or CUDA)
     out = vq(x, training=False)
     out.sum().backward()
-    np.testing.assert_allclose(x.grad.numpy(), np.ones_like(x.grad.numpy()))
+    np.testing.assert_allclose(_np(x.grad), np.ones((2, 3, 3, 4)))
     # the forward output is the nearest code
     _, _, q = vq.lookup(ops.reshape(x.detach(), (-1, 4)))
     np.testing.assert_allclose(_np(out).reshape(-1, 4), _np(q), atol=1e-6)

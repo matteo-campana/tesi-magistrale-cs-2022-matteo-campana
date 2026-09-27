@@ -25,8 +25,12 @@ from rsseg.train.seg_train import lr_at_epoch
 
 
 def test_config_inheritance_and_overrides(tmp_path):
-    (tmp_path / "base.yaml").write_text("name: a\ntrain:\n  epochs: 7\n  lr: 0.5\n")
-    (tmp_path / "exp.yaml").write_text("base: base.yaml\nname: b\ntrain:\n  lr: 0.1\n")
+    (tmp_path / "base.yaml").write_text(
+        "name: a\ntrain:\n  epochs: 7\n  lr: 0.5\n", encoding="utf-8"
+    )
+    (tmp_path / "exp.yaml").write_text(
+        "base: base.yaml\nname: b\ntrain:\n  lr: 0.1\n", encoding="utf-8"
+    )
     cfg = load_config(tmp_path / "exp.yaml", ["train.batch_size=3", "model.vq.num_codes=64"])
     assert (
         cfg.name,
@@ -186,7 +190,7 @@ def test_end_to_end_train_and_pretrain(synthetic_dataset, tmp_path, monkeypatch)
     result = train_segmentation(cfg)
     run_dir = Path(result["run_dir"])
     assert (run_dir / "report.json").exists() and (run_dir / "best.weights.h5").exists()
-    assert json.loads((run_dir / "report.json").read_text())["split"] == "test"
+    assert json.loads((run_dir / "report.json").read_text(encoding="utf-8"))["split"] == "test"
 
     mlflow.set_tracking_uri(uri)
     run = mlflow.get_run(result["run_id"])

@@ -71,7 +71,7 @@ def test_prepare_outputs(synthetic_dataset):
     assert mask.shape == (128, 128) and set(np.unique(mask)) <= set(range(NUM_CLASSES)) | {
         IGNORE_INDEX
     }
-    stats = json.loads((Path(cfg.root) / "stats.json").read_text())
+    stats = json.loads((Path(cfg.root) / "stats.json").read_text(encoding="utf-8"))
     assert len(stats["mean"]) == 3
 
 

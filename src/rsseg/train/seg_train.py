@@ -105,7 +105,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
 
     with mlflow_run(cfg, "seg", run_dir) as run:
         mlflow.log_params({"runtime.precision": precision, "model.params": model.count_params()})
-        (run_dir / "model_summary.txt").write_text(_summary(model))
+        (run_dir / "model_summary.txt").write_text(_summary(model), encoding="utf-8")
         mlflow.log_artifact(str(run_dir / "model_summary.txt"))
 
         history = model.fit(
@@ -149,7 +149,9 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
             if (run_dir / "predictions").exists():
                 mlflow.log_artifacts(str(run_dir / "predictions"), artifact_path="predictions")
             result["test"] = report["all_classes"]
-        (run_dir / "result.json").write_text(json.dumps(result, indent=2, default=str))
+        (run_dir / "result.json").write_text(
+            json.dumps(result, indent=2, default=str), encoding="utf-8"
+        )
     return result
 
 

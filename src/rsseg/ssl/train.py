@@ -93,7 +93,7 @@ def pretrain_dino(cfg: ExperimentConfig) -> dict:
             "run_dir": str(run_dir),
             "backbone_weights": export_path,
         }
-        (run_dir / "result.json").write_text(json.dumps(result, indent=2))
+        (run_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     log.info(
         "student backbone exported to %s — use it with model.weights=%s", export_path, export_path
     )

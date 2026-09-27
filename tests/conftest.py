@@ -6,8 +6,13 @@ os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
 
 import keras  # noqa: E402
 import pytest  # noqa: E402
+import torch  # noqa: E402
 
 import rsseg  # noqa: E402,F401
+
+# Reference checks use float32 tolerances; TF32 convs on Ampere+ GPUs are ~1e-3 accurate.
+torch.backends.cudnn.allow_tf32 = False
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 @pytest.fixture(autouse=True)

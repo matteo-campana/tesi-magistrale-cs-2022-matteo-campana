@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             files += sorted(p.rglob("report.json")) if p.is_dir() else [p]
         table = aggregate_reports(files)
         if args.out:
-            Path(args.out).write_text(table)
+            Path(args.out).write_text(table, encoding="utf-8")
         print(table)
         return 0
 

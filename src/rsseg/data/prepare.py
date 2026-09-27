@@ -175,9 +175,12 @@ def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
         mean = acc[0] / acc[2]
         std = np.sqrt(np.maximum(acc[1] / acc[2] - mean**2, 0.0))
         (root / "stats.json").write_text(
-            json.dumps({"mean": mean.tolist(), "std": std.tolist()}, indent=2)
+            json.dumps({"mean": mean.tolist(), "std": std.tolist()}, indent=2),
+            encoding="utf-8",
         )
-    (root / "split.json").write_text(json.dumps({"protocol": cfg.protocol, **split}, indent=2))
+    (root / "split.json").write_text(
+        json.dumps({"protocol": cfg.protocol, **split}, indent=2), encoding="utf-8"
+    )
 
     counts = {s: sum(r["split"] == s for r in crop_rows) for s in ("train", "val")}
     counts["test_tiles"] = sum(r["split"] == "test" for r in tile_rows)
@@ -193,12 +196,12 @@ def _map(jobs: list, workers: int) -> Iterable:
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
 
 
 def read_csv(path: str | Path) -> list[dict]:
-    with Path(path).open(newline="") as f:
+    with Path(path).open(newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))

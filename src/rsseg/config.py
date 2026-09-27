@@ -191,7 +191,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
-    raw = yaml.safe_load(path.read_text()) or {}
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     base = raw.pop("base", None)
     if base is not None:
         raw = _deep_merge(_load_yaml((path.parent / base).resolve()), raw)
@@ -239,4 +239,4 @@ def load_config(
 
 def save_config(cfg: ExperimentConfig, path: str | Path) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(yaml.safe_dump(cfg.to_dict(), sort_keys=False))
+    Path(path).write_text(yaml.safe_dump(cfg.to_dict(), sort_keys=False), encoding="utf-8")
