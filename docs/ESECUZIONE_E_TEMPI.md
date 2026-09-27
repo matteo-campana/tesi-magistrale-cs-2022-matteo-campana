@@ -13,7 +13,7 @@ Legenda: **misurato** = cronometrato su questa macchina; **stima** = calcolato d
 ## 1. Test automatici (pytest)
 
 ```bash
-pytest -q                          # tutti i 74 test
+pytest -q                          # tutti i 78 test
 pytest -q -k "not end_to_end"      # esclude i 3 test end-to-end più lenti
 pytest -q tests/test_isprs.py      # un solo file
 pytest -q --durations=10           # mostra i test più lenti
@@ -52,7 +52,7 @@ Ogni file lanciato da solo costa qualche secondo in più per l'import di PyTorch
 | `rsseg prepare-unlabeled --source vaihingen_frames …` (20 frame) | stima 5–10 min | stima 3–4 GB |
 
 Le campagne lanciano da sole questi comandi quando i dati mancano. Per esempio `rq6_ndsm` prepara
-`data/potsdam_ndsm_ownapproach` e `data/potsdam_ndsm_computed` (stima ~3 min ciascuno) e `thesis2022` prepara
+`data/potsdam_ndsm_computed` (stima ~3 min) e `thesis2022` prepara
 `data/potsdam_thesis2022`.
 
 ## 3. Esperimenti singoli
@@ -136,11 +136,11 @@ epoche); "massimo" usa tutte le 100 epoche. Sono stime: dopo i primi run complet
 | `thesis2022` | 1 config × 3 seed (+ prepare) | 3 | ~15 h | ~15 h |
 | `rq1_attention` | 2 config × 3 seed | 6 | ~18 h | ~29 h |
 | `rq4_aerial` | 2 DINO + 4 config × 3 seed | 14 | ~25 h | ~36 h |
-| `rq6_ndsm` | 4 config × 3 seed (+ 2 prepare) | 12 | ~36 h | ~58 h |
+| `rq6_ndsm` | 3 config × 3 seed (+ 1 prepare) | 9 | ~27 h | ~44 h |
 | `rq3_low_label` | 2 DINO + 12 config × 3 seed | 38 | ~55 h | ~72 h |
 | `thesis_grid` | 2 DINO + 8 config × 3 seed | 26 | ~79 h | ~125 h |
 | `transformers` | 1 DINO + 3 config × 3 seed | 10 | ~120 h (~30 h senza ViT-B) | ~195 h (~47 h senza ViT-B) |
-| `all` | tutto, run in comune eseguiti una volta | 108 | **~13 giorni** (~9 senza ViT-B) | ~20 giorni (~14 senza ViT-B) |
+| `all` | tutto, run in comune eseguiti una volta | 105 | **~13 giorni** (~9 senza ViT-B) | ~20 giorni (~14 senza ViT-B) |
 
 I run in comune tra campagne (ad esempio `maresunet_r18_imagenet`, presente in RQ1, RQ3, RQ6 e nella griglia)
 vengono addestrati una volta sola: lanciare prima `rq1_attention` accorcia le campagne successive.
@@ -151,7 +151,7 @@ Dalle campagne che rispondono prima alle domande principali a quelle più lunghe
 
 1. `rq5_efficiency` (minuti): conferma memoria e velocità sulla tua macchina.
 2. `rq1_attention` (~18 h): baseline MAResU-Net R18, riusata da quasi tutte le altre.
-3. `vaihingen` (~8 h) e `rq6_ndsm` (~36 h): secondo dataset e nDSM.
+3. `vaihingen` (~8 h) e `rq6_ndsm` (~27 h): secondo dataset e nDSM.
 4. `rq3_low_label` (~55 h) e `rq4_aerial` (~25 h): DINO; condividono `dino_r18` e `maresunet_r18_dino`.
 5. `thesis_grid` (~79 h, meno i run già fatti) e `thesis2022` (~15 h): confronto con la tesi.
 6. `transformers` (~30 h senza ViT-B): conviene escludere ViT-B/16 con `--only` (§5).
@@ -169,8 +169,48 @@ verificare che una campagna parta e arrivi in fondo prima di lanciarla davvero.
 |---|---|
 | Un run di training `--quick` | ~2–3 min (misurato: 2 min 49 s prima dell'ottimizzazione della valutazione) |
 | `rq5_efficiency --quick` | ~5 min (misurato) |
-| `rq6_ndsm --quick --seeds 0` | ~10 min + 2 prepare (~6 min) (stima) |
+| `rq6_ndsm --quick --seeds 0` | ~8 min + 1 prepare (~3 min) (stima) |
 | `all --quick --seeds 0` | ~1,5–2 h (stima) |
+
+### 4.4 Seguire una campagna in corso
+
+La console stampa una riga all'inizio (▶) e una alla fine (✓ o ✗) di ogni passo. Mentre il passo gira, sotto la
+riga ▶ c'è un riquadro aggiornato ogni secondo, per esempio:
+
+```
+[4/30] train maresunet_r18_imagenet__s0 — running for 35m12s
+  epoch 12/100 · batch 198/396 · val_miou 0.7120 (best 0.7180 at epoch 10)
+  2m48s per epoch · early stop after 19 more epochs without improvement
+  this step: ~54m36s–4h07m left + test evaluation
+  then 26 more steps: ~2d08h
+  log: runs/campaigns/store/runs/maresunet_r18_imagenet__s0/log.txt
+```
+
+| Riga | Significato |
+|---|---|
+| `[4/30]` | passo corrente e passi da eseguire in questo lancio (quelli già completati non contano) |
+| `starting: …` | primi 1–2 minuti: import, worker del DataLoader, modello |
+| `epoch … · batch …` | epoca e batch correnti; `validation` durante la validazione di fine epoca |
+| `val_miou … (best …)` | ultima `val_mIoU` e migliore finora: il checkpoint `best.weights.h5` è quello della migliore |
+| `early stop after N …` | epoche senza miglioramenti ancora concesse prima che l'early stopping fermi il run |
+| `this step: A–B left` | A se l'early stopping si ferma appena possibile, B se il run arriva a tutte le epoche; poi la valutazione (~7 min su Potsdam) |
+| `test evaluation · tile 5/14` | valutazione finale sulle tile di test |
+| `then N more steps` | durata media dei passi già completati × passi rimanenti (`n/a` finché non ne è finito almeno uno per tipo) |
+| `no progress for …` | nessun aggiornamento da 15 minuti: controlla il log, il processo potrebbe essere bloccato |
+
+Il riquadro legge `progress.json`, che il training scrive nella cartella del passo. Per vedere tutto il dettaglio
+(metriche di ogni epoca, valutazione tile per tile), in un secondo terminale:
+
+```bash
+tail -f runs/campaigns/store/runs/maresunet_r18_imagenet__s0/log.txt   # Ctrl+C chiude solo tail
+mlflow ui --backend-store-uri sqlite:///mlflow.db                        # curve su http://127.0.0.1:5000
+```
+
+**Fermare e riprendere.** Ferma con Ctrl+C e aspetta che torni il prompt; per riprendere rilancia lo stesso comando
+(con `--clean-failed` cancella anche la cartella del tentativo interrotto). Il passo interrotto riparte da zero.
+Se invece chiudi la finestra di Git Bash, il processo Python del training può restare attivo in background: prima
+di rilanciare controlla con `nvidia-smi` che la GPU sia libera ed eventualmente chiudilo con
+`taskkill //F //PID <pid>`.
 
 ## 5. Ridurre i tempi
 

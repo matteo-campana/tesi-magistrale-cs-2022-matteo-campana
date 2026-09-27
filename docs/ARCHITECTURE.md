@@ -110,7 +110,7 @@ flowchart LR
 │       ├── visualize.py          # pannelli TOP | GT | pred | errori
 │       └── benchmark.py          # picco VRAM e throughput di una configurazione
 ├── scripts/run_thesis_grid.sh    # wrapper di rsseg campaign configs/campaigns/thesis_grid.yaml
-├── tests/                        # 74 test (unit + end-to-end su dati sintetici)
+├── tests/                        # 78 test (unit + end-to-end su dati sintetici)
 ├── docs/
 └── legacy/                       # materiale originale 2022, invariato
 ```
@@ -228,7 +228,9 @@ backbone DINO, pool non etichettati e benchmark; `include` unisce più campagne 
 3. stima il disco (checkpoint top-k con lo stato dell'ottimizzatore) e si ferma se non basta;
 4. esegue pre-training, training e benchmark, **ognuno in un sottoprocesso** `python -m rsseg.cli …` con il log in
    `log.txt`: un crash o un out-of-memory ferma solo quel passo, e i run che dipendono da un pre-training fallito
-   risultano `blocked`;
+   risultano `blocked`. Il sottoprocesso scrive il suo avanzamento in `progress.json` (`rsseg.progress`, attivato
+   dalla variabile `RSSEG_PROGRESS_FILE`: epoca, batch, `val_miou`, migliore, attesa dell'early stopping, tile in
+   valutazione) e la console lo mostra in una riga aggiornata ogni secondo (`describe_progress`);
 5. scrive `status.json` e `report.md` della campagna (solo i suoi run: media ± std, eroded, benchmark, errori).
 
 I passi vivono in uno **store condiviso** (`runs/campaigns/store/{backbones,runs,benchmarks}/<id>/`, con `spec.json` e

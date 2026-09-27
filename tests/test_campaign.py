@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Campaigns: expansion, resume, failures, prerequisites (fake runner) and one real run."""
+"""Campaigns: expansion, resume, failures, prerequisites, progress (fake runner) and one real run."""
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -9,10 +10,14 @@ import yaml
 
 from rsseg.campaign import (
     QUICK_TRAIN,
+    STALE_S,
     CampaignError,
     Layout,
     Options,
+    Running,
+    Step,
     command,
+    describe_progress,
     load_campaign,
     plan_campaign,
     run_campaign,
@@ -22,6 +27,8 @@ from rsseg.campaign import (
 from rsseg.cli import main
 from rsseg.config import load_config
 from rsseg.data.synthetic import make_synthetic_potsdam
+from rsseg.progress import ENV, FILE_NAME, read
+from rsseg.train.callbacks import ProgressReporter
 
 SMOKE = "configs/smoke.yaml"
 SCORES = {"oa": 0.9, "mf1": 0.8, "miou": 0.7}
@@ -216,6 +223,73 @@ def test_prerequisite_checks(tmp_path, raw):
         run_campaign(fresh, _opts(tmp_path), FakeRunner(), lambda keys: {k: 10**15 for k in keys})
 
 
+def test_progress_reporter_follows_early_stopping(tmp_path, monkeypatch):
+    path = tmp_path / FILE_NAME
+    cb = ProgressReporter("train", "val_miou", patience=3, every=2)
+    cb.set_params({"epochs": 10, "steps": 4})
+    cb.on_train_begin()
+    assert not path.exists()  # no campaign asked for it
+    monkeypatch.setenv(ENV, str(path))
+    for epoch, miou in enumerate([0.5, 0.6, 0.55, 0.58]):
+        cb.on_epoch_begin(epoch)
+        for batch in range(4):
+            cb.on_train_batch_end(batch, {"loss": 1.0})
+        cb.on_test_begin()
+        cb.on_epoch_end(epoch, {"loss": 1.0, "val_miou": miou})
+    p = read(path)
+    assert p["epoch"] == 4 and p["batch"] == 4 and p["stage"] == "validation"
+    assert (p["best"], p["best_epoch"], p["since_best"]) == (0.6, 2, 2)
+    assert p["epoch_s"] >= 0 and p["updated"] > 0
+
+
+def _running(tmp_path, after=("train", "train")) -> Running:
+    step = Step("train", "base__s0", "base", SMOKE, [], seed=0)
+    return Running(step, 2, 5, 1000.0, tmp_path / FILE_NAME, tmp_path / "log.txt", list(after),
+                   {"pretrain": 600.0, "train": 3 * 3600.0, "benchmark": None})  # fmt: skip
+
+
+def test_describe_progress(tmp_path):
+    r = _running(tmp_path)
+    assert describe_progress(r, None, 1060.0)[1].startswith("starting")
+    train = {"phase": "train", "stage": "train", "epoch": 12, "epochs": 100, "batch": 198,
+             "steps": 396, "monitor": "val_miou", "value": 0.712, "best": 0.718, "best_epoch": 10,
+             "since_best": 1, "patience": 20, "epoch_s": 168.0, "updated": 1990.0}  # fmt: skip
+    lines = describe_progress(r, train, 2000.0)
+    assert lines[0] == "[2/5] train base__s0 — running for 16m40s"
+    assert lines[1] == ("epoch 12/100 · batch 198/396 · val_miou 0.7120 (best 0.7180 at "
+                        "epoch 10)")  # fmt: skip
+    assert lines[2] == "2m48s per epoch · early stop after 19 more epochs without improvement"
+    # 19 epochs + half of the current one if it stops early, 88.5 epochs otherwise
+    assert lines[3] == "this step: ~54m36s–4h07m left + test evaluation"
+    assert lines[4] == "then 2 more steps: ~6h00m" and lines[5].startswith("log: ")
+    evaluation = {"phase": "evaluation", "stage": "test", "tile": 5, "tiles": 14, "tile_s": 30.0,
+                  "updated": 1000.0}  # fmt: skip
+    lines = describe_progress(_running(tmp_path, ["benchmark"]), evaluation, 1000.0 + STALE_S + 60)
+    assert lines[1] == "test evaluation · tile 5/14 · 0m30s per tile"
+    assert lines[2] == "this step: ~5m00s left"
+    assert lines[3].startswith("no progress for 16m00s")
+    assert "n/a" in lines[4]
+
+
+def test_run_watches_every_step_that_runs(tmp_path, raw):
+    c = load_campaign(_campaign(tmp_path, raw))
+    seen = []
+
+    @contextlib.contextmanager
+    def watch(r):
+        assert not r.progress_path.exists()  # a stale file of a previous attempt is removed
+        seen.append((r.step.id, r.index, r.total, len(r.after)))
+        yield
+
+    stale = tmp_path / "campaigns" / "store" / "backbones" / "dino_a" / FILE_NAME
+    stale.parent.mkdir(parents=True)
+    stale.write_text("{}", encoding="utf-8")
+    run_campaign(c, _opts(tmp_path), FakeRunner(fail={"dino_bad"}), _counter, watch=watch)
+    assert seen[0] == ("dino_a", 1, 13, 12) and seen[-1] == ("bench", 13, 13, 0)
+    # the two fine-tunings of the failed backbone are blocked: they never run
+    assert len(seen) == 11 and not {"ft_bad__s0", "ft_bad__s1"} & {s[0] for s in seen}
+
+
 def test_report_out_creates_the_folder(tmp_path, capsys):
     (tmp_path / "r").mkdir()
     (tmp_path / "r" / "report.json").write_text(
@@ -256,6 +330,11 @@ def test_campaign_end_to_end_with_real_subprocesses(tmp_path, raw):
         "utf-8"
     )
     assert "model.weights=" in log and "backbone.weights.h5" in log
+    # every step shared its progress with the campaign
+    store = tmp_path / "campaigns" / "store"
+    assert read(store / "backbones" / "dino" / FILE_NAME)["phase"] == "pretrain"
+    p = read(store / "runs" / "scratch__s0" / FILE_NAME)
+    assert p["phase"] == "evaluation" and p["tile"] == p["tiles"] == 1
 
     def never(*_):
         raise AssertionError("a completed step was run again")

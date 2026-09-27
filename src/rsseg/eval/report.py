@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 import keras
@@ -22,6 +23,7 @@ from rsseg.data.datasets import load_image, read_tiles
 from rsseg.data.prepare import load_mask
 from rsseg.eval.sliding_window import predict_tile
 from rsseg.eval.visualize import error_map
+from rsseg.progress import report as report_progress
 from rsseg.train.metrics import confusion_matrix_np, scores_from_confusion
 
 log = logging.getLogger(__name__)
@@ -53,7 +55,10 @@ def evaluate_tiles(
     total = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64)
     total_eroded = np.zeros_like(total)
     per_tile = {}
-    for row in track(tiles, f"evaluating {cfg.split} tiles"):
+    t0 = time.time()
+    for i, row in enumerate(track(tiles, f"evaluating {cfg.split} tiles")):
+        report_progress(phase="evaluation", stage=cfg.split, tile=i + 1, tiles=len(tiles),
+                        tile_s=(time.time() - t0) / i if i else None)  # fmt: skip
         image = load_image(row["image"], Path(data_root) / row["ndsm"] if use_ndsm else None)
         gt = load_mask(Path(data_root) / row["mask"])
         pred = predict_tile(

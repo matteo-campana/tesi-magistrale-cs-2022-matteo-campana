@@ -20,7 +20,7 @@ from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.runtime import setup_runtime
 from rsseg.ssl.dino import DINOModel
 from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
-from rsseg.train.callbacks import RichProgressBar
+from rsseg.train.callbacks import ProgressReporter, RichProgressBar
 from rsseg.train.seg_train import make_run_dir
 
 log = logging.getLogger(__name__)
@@ -109,6 +109,7 @@ def pretrain_dino(cfg: ExperimentConfig) -> dict:
                 keras.callbacks.CSVLogger(str(run_dir / "history.csv")),
                 MLflowMetricsLogger(),
                 RichProgressBar(keys=("loss", "lr", "teacher_temp")),
+                ProgressReporter("pretrain", monitor=None),
             ],
             shuffle=False,  # the DataLoader already shuffles
             verbose=0,  # progress is shown by RichProgressBar

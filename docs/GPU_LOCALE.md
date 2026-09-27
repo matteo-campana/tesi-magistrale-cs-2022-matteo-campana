@@ -131,7 +131,7 @@ rsseg campaign configs/campaigns/all.yaml --only "vaihingen_*" --seeds 0   # sot
 | `rq3_low_label` | 1/10/25/100% delle etichette × ImageNet, DINO, DINO + Toronto |
 | `rq4_aerial` | DINO con augmentation standard vs "aerial" |
 | `rq5_efficiency` | solo `rsseg benchmark`: parametri, immagini/s, VRAM |
-| `rq6_ndsm` | RGB vs RGB + nDSM (lastools, ownapproach, calcolato) |
+| `rq6_ndsm` | RGB vs RGB + nDSM (ufficiale `lastools`, calcolato dal DSM) |
 | `vaihingen` | RQ1 e RQ6 su Vaihingen |
 | `transformers` | encoder Swin-T, ViT-B/16, ViT-S/16 (DINO) |
 | `thesis2022` | protocollo della tesi, per il confronto con la tab. 4.5 |
@@ -149,6 +149,9 @@ Come funziona:
 - **Errori**: un passo fallito (es. memoria esaurita) viene registrato e la campagna prosegue; i run che dipendono
   da un pre-training fallito risultano `blocked`. `--stop-on-error` ferma tutto al primo errore, `--clean-failed`
   cancella le cartelle dei tentativi falliti prima di riprovare.
+- **Avanzamento**: durante ogni passo la console mostra epoca, batch, `val_mIoU` e migliore, epoche rimaste prima
+  dell'early stopping, tile in valutazione, tempo rimasto del passo e della campagna. Dettagli in
+  [ESECUZIONE_E_TEMPI.md](ESECUZIONE_E_TEMPI.md#44-seguire-una-campagna-in-corso).
 - **Risultati**: `runs/campaigns/<campagna>/report.md` (media ± std sui seed, metriche piene ed eroded, benchmark,
   passi falliti con il log) e `status.json`. Contiene solo i run della campagna, mai run estranei.
 - **Disco**: prima di partire stima lo spazio (checkpoint top-k con lo stato dell'ottimizzatore, circa 260 MB

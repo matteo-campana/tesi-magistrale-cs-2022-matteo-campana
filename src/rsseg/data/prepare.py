@@ -310,6 +310,9 @@ def _inspect_tile(job: TileJob) -> dict:
         if s is not None and s != shape:
             ok = max(abs(s[0] - shape[0]), abs(s[1] - shape[1])) <= SIZE_TOLERANCE
             notes.append(f"{role} {s[1]}×{s[0]} ({'pad' if ok else 'ERROR'})")
+    needed = {"official": ("nDSM", f.ndsm), "computed": ("DSM", f.dsm)}.get(job.ndsm)
+    if needed is not None and needed[1] is None:
+        notes.append(f"{needed[0]} missing (ERROR)")
     mask = rgb_to_index(load_rgb(f.label))
     off = float((mask == IGNORE_INDEX).mean())
     if off > job.max_offpalette:

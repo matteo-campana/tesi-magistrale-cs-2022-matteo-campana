@@ -21,9 +21,11 @@ Results are printed as tables (``--json`` for machine-readable output on stdout)
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
@@ -186,6 +188,26 @@ def campaign_plan_table(plan: dict):
     return table
 
 
+@contextlib.contextmanager
+def live_step_progress(running):
+    """Show the progress of a running campaign step, refreshed every second, until it ends."""
+    from rich.live import Live
+    from rich.text import Text
+
+    from rsseg.campaign import describe_progress
+    from rsseg.progress import read
+
+    def render() -> Text:
+        first, *rest = describe_progress(running, read(running.progress_path), time.time())
+        text = Text(first, style="title")
+        for line in rest:
+            text.append("\n  " + line, style="muted" if line.startswith("log:") else None)
+        return text
+
+    with Live(get_renderable=render, console=err_console, refresh_per_second=1, transient=True):
+        yield
+
+
 def run_campaign_command(args) -> int:
     from rsseg.campaign import (
         CampaignError,
@@ -210,7 +232,8 @@ def run_campaign_command(args) -> int:
                           f"~{result['disk_needed_gb']} GB (free {result['disk_free_gb']} GB) — "
                           f"estimated time {result['eta']}")  # fmt: skip
         if not args.dry_run:
-            result = run_campaign(campaign, opts, echo=err_console.print, plan=plan)
+            watch = None if args.json else live_step_progress
+            result = run_campaign(campaign, opts, echo=err_console.print, plan=plan, watch=watch)
     except CampaignError as e:
         err_console.print(f"[red]campaign error:[/] {e}")
         return 2

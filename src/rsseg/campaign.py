@@ -25,7 +25,9 @@ store shared by all campaigns, ``<root>/store/{backbones,runs,benchmarks}/<id>/`
 ``spec.json``, ``log.txt`` and ``outcome.json``: completed steps are skipped, so an interrupted
 campaign resumes where it stopped and a run shared by two campaigns (e.g. the baseline) is
 trained once. ``<root>/<campaign>/`` holds ``status.json`` and ``report.md``. ``--quick`` uses a
-separate root, so smoke-sized results never mix with real ones.
+separate root, so smoke-sized results never mix with real ones. While a step runs it writes
+``progress.json`` (:mod:`rsseg.progress`) and :func:`describe_progress` turns it into the lines
+the console shows (epoch, metrics, tile under evaluation, time left).
 """
 
 from __future__ import annotations
@@ -42,11 +44,13 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
 
+from rsseg import progress
 from rsseg.config import DataConfig, ExperimentConfig, load_config
 
 log = logging.getLogger(__name__)
@@ -331,7 +335,8 @@ def command(layout: Layout, step: Step, campaign: str, quick: bool) -> list[str]
 def subprocess_runner(cmd: list[str], log_path: Path, stdout: Path | None = None) -> int:
     """Run ``cmd`` with stderr (and stdout, unless ``stdout`` is given) appended to ``log_path``."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
+           progress.ENV: str(log_path.parent / progress.FILE_NAME)}  # fmt: skip
     with log_path.open("a", encoding="utf-8") as err:
         err.write(f"\n$ {subprocess.list2cmdline(cmd)}\n")
         err.flush()
@@ -519,7 +524,91 @@ def fmt_duration(seconds: float | None) -> str:
     if seconds is None or math.isnan(seconds):
         return "n/a"
     h, rem = divmod(int(seconds), 3600)
+    if h >= 24:
+        return f"{h // 24}d{h % 24:02d}h"
     return f"{h}h{rem // 60:02d}m" if h else f"{rem // 60}m{rem % 60:02d}s"
+
+
+STALE_S = 900
+"""A running step whose progress has not changed for this long is flagged (hang or crash)."""
+
+
+@dataclass
+class Running:
+    """The step being run, as shown by the console while it runs."""
+
+    step: Step
+    index: int
+    """Position among the steps this invocation runs (1-based)."""
+    total: int
+    started: float
+    progress_path: Path
+    log_path: Path
+    after: list[str]
+    """Kinds of the steps still to run after this one."""
+    mean_s: dict[str, float | None]
+    """Mean duration of the completed steps by kind (store-wide), for the time left."""
+
+
+def describe_progress(r: Running, p: dict | None, now: float) -> list[str]:
+    """Lines describing a running step: phase, epoch, metrics and time left."""
+    lines = [f"[{r.index}/{r.total}] {r.step.kind} {r.step.id} — running for "
+             f"{fmt_duration(now - r.started)}"]  # fmt: skip
+    left: tuple[float, float] | None = None
+    if p is None:
+        lines.append("starting: imports, data loaders, model…")
+    elif p.get("phase") in ("train", "pretrain"):
+        epoch, epochs = p.get("epoch") or 0, p.get("epochs") or 0
+        s = f"epoch {epoch}/{epochs}"
+        if p.get("stage") == "validation":
+            s += " · validation"
+        elif p.get("steps"):
+            s += f" · batch {p.get('batch', 0)}/{p['steps']}"
+        if p.get("value") is not None:
+            s += (f" · {p['monitor']} {p['value']:.4f} (best {p['best']:.4f} at epoch "
+                  f"{p['best_epoch']})")  # fmt: skip
+        elif p.get("loss") is not None:
+            s += f" · loss {p['loss']:.4f}"
+        lines.append(s)
+        if p.get("epoch_s"):
+            details = [f"{fmt_duration(p['epoch_s'])} per epoch"]
+            if p.get("stage") == "validation":
+                done = float(epoch)
+            else:
+                done = epoch - 1 + (p.get("batch", 0) / p["steps"] if p.get("steps") else 0)
+            longest = max(epochs - done, 0) * p["epoch_s"]
+            shortest = longest
+            if p.get("patience") and p.get("since_best") is not None:
+                wait = max(p["patience"] - p["since_best"], 0)
+                details.append(f"early stop after {wait} more epochs without improvement")
+                shortest = min(longest, max(epoch + wait - done, 0) * p["epoch_s"])
+            left = (shortest, longest)
+            lines.append(" · ".join(details))
+    elif p.get("phase") == "evaluation":
+        s = f"{p.get('stage', 'test')} evaluation · tile {p.get('tile')}/{p.get('tiles')}"
+        if p.get("tile_s"):
+            rest = (p["tiles"] - p["tile"] + 1) * p["tile_s"]
+            s += f" · {fmt_duration(p['tile_s'])} per tile"
+            left = (rest, rest)
+        lines.append(s)
+    if left is not None:
+        if round(left[0]) == round(left[1]):
+            span = fmt_duration(left[1])
+        else:
+            span = f"{fmt_duration(left[0])}–{fmt_duration(left[1])}"
+        extra = " + test evaluation" if p.get("phase") == "train" else ""
+        lines.append(f"this step: ~{span} left{extra}")
+    if p is not None and now - p.get("updated", now) > STALE_S:
+        lines.append(f"no progress for {fmt_duration(now - p['updated'])}: check the log")
+    if r.after:
+        means = [r.mean_s.get(k) for k in r.after]
+        if None in means:
+            eta = "time n/a until a step of each kind has completed"
+        else:
+            eta = f"~{fmt_duration(sum(means))}"
+        lines.append(f"then {len(r.after)} more steps: {eta}")
+    lines.append(f"log: {r.log_path.as_posix()}")
+    return lines
 
 
 # ---------------------------------------------------------------------------------- execution
@@ -572,10 +661,12 @@ def plan_campaign(c: Campaign, opts: Options,
 
 def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
                  param_counter: Callable[[list[str]], dict[str, int]] | None = None,
-                 echo: Callable[[str], None] = log.info, plan: dict | None = None) -> dict:  # fmt: skip
+                 echo: Callable[[str], None] = log.info, plan: dict | None = None,
+                 watch: Callable[[Running], AbstractContextManager] | None = None) -> dict:  # fmt: skip
     """Run (or resume) a campaign; returns the summary written to ``status.json``.
 
-    ``plan`` is the result of :func:`plan_campaign` if already computed.
+    ``plan`` is the result of :func:`plan_campaign` if already computed. ``watch`` wraps every
+    step that runs (the console uses it to show the live progress).
     """
     plan = plan or plan_campaign(c, opts, param_counter)
     if opts.dry_run:
@@ -615,7 +706,9 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
 
     # 2. pre-trainings, trainings (seed by seed), benchmarks
     failed: set[str] = set()
-    for step in [*c.pretrains.values(), *c.runs, *c.benchmarks]:
+    steps = [*c.pretrains.values(), *c.runs, *c.benchmarks]
+    to_run = [s for s in steps if not is_done(layout, s)]
+    for step in steps:
         d = layout.step_dir(step)
         entry = {"kind": step.kind, "log": (d / "log.txt").as_posix()}
         if is_done(layout, step):
@@ -630,12 +723,18 @@ def run_campaign(c: Campaign, opts: Options, runner: Runner = subprocess_runner,
             for old in d.glob("*-*-*"):  # timestamped run folders of failed attempts
                 shutil.rmtree(old, ignore_errors=True)
         (d / "spec.json").write_text(json.dumps(step.spec(), indent=2), encoding="utf-8")
-        echo(f"▶ {step.kind} {step.id}  (log: {entry['log']})")
+        index = to_run.index(step) + 1
+        echo(f"▶ [{index}/{len(to_run)}] {step.kind} {step.id}  (log: {entry['log']})")
         status[step.id] = {**entry, "state": "running"}
         save()
         t0 = time.time()
         stdout = d / "stdout.json" if step.kind == "benchmark" else None
-        code = runner(command(layout, step, c.name, opts.quick), d / "log.txt", stdout)
+        (d / progress.FILE_NAME).unlink(missing_ok=True)
+        means = {k: _mean_duration(layout, k) for k in ("pretrain", "train", "benchmark")}
+        running = Running(step, index, len(to_run), t0, d / progress.FILE_NAME, d / "log.txt",
+                          [s.kind for s in to_run[index:]], means)  # fmt: skip
+        with watch(running) if watch else nullcontext():
+            code = runner(command(layout, step, c.name, opts.quick), d / "log.txt", stdout)
         if code == 0 and step.kind == "benchmark":
             result = _last_json(stdout.read_text(encoding="utf-8")) if stdout.exists() else None
             if result is None:

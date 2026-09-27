@@ -59,7 +59,9 @@ class DatasetSource:
         raw = Path(raw_dir)
         if not raw.is_dir():
             raise FileNotFoundError(f"raw_dir {raw} does not exist")
-        paths = sorted(p.relative_to(raw).as_posix() for p in raw.rglob("*") if p.is_file())
+        # Empty files count as missing: 11 Potsdam ``ownapproach`` nDSMs are 0 bytes in the ISPRS archive.
+        paths = sorted(p.relative_to(raw).as_posix() for p in raw.rglob("*")
+                       if p.is_file() and p.stat().st_size > 0)  # fmt: skip
         roles = {
             "image": (image_pattern,) if image_pattern else self.image,
             "label": (label_pattern,) if label_pattern else self.label,

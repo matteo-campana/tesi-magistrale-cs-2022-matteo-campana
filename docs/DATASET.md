@@ -152,7 +152,7 @@ L'nDSM è l'altezza sul terreno. Codifica comune a tutte le fonti: `uint8` in **
 
 | `data.ndsm_source` | Fonte |
 |---|---|
-| `official` (default per Potsdam con `auto`) | `1_DSM_normalisation/dsm_potsdam_XX_YY_normalized_<variant>.jpg`, prodotto da ISPRS senza controllo manuale; `data.ndsm_variant: lastools` (default) oppure `ownapproach` |
+| `official` (default per Potsdam con `auto`) | `1_DSM_normalisation/dsm_potsdam_XX_YY_normalized_<variant>.jpg`, prodotto da ISPRS senza controllo manuale; `data.ndsm_variant: lastools` (default) oppure `ownapproach`; **`ownapproach` non è utilizzabile**: 11 file su 38 sono vuoti (0 byte) già nell'archivio ISPRS (tile 3_13, 4_10, 4_11, 4_13, 5_11, 5_12, 6_8, 6_11, 6_12, 7_7, 7_8) |
 | `computed` (default per Vaihingen con `auto`) | calcolato dal DSM assoluto da `rsseg.data.ndsm.compute_ndsm` |
 
 Mediana dell'nDSM per classe (decimetri) su tre tile di Potsdam:
@@ -168,7 +168,9 @@ Mediana dell'nDSM per classe (decimetri) su tre tile di Potsdam:
 
 La variante `lastools` ha un offset di circa +1 m sul terreno, mentre `ownapproach` lo mette a 0. Gli edifici
 sono coerenti in tutte le fonti. Le mediane degli alberi sono basse: il DSM da image matching coglie poco le
-chiome. La scelta della variante è un'ablation possibile (`data.ndsm_variant`).
+chiome. Un'ablation tra le due varianti ufficiali non è possibile perché `ownapproach` è incompleta: `rsseg prepare
+--dry-run` segnala le tile senza nDSM come errore (i file vuoti contano come mancanti). RQ6 confronta quindi
+`lastools` con l'nDSM calcolato.
 
 **nDSM calcolato.** Il terreno è stimato con un'apertura morfologica: si prende il minimo del DSM su celle di ~1 m,
 poi si applicano un filtro di minimo e uno di massimo con finestra di ~30 m. Tutto ciò che è più stretto della

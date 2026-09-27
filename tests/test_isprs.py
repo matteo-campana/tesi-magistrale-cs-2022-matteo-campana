@@ -88,6 +88,18 @@ def test_dry_run_reports_sources_and_padding(potsdam_raw):
     assert "pad" in rows["3_13"]["notes"] and "ERROR" not in rows["3_13"]["notes"]
 
 
+def test_empty_ndsm_file_counts_as_missing(potsdam_raw, tmp_path):
+    """11 official ``ownapproach`` nDSMs are 0-byte files in the ISPRS archive."""
+    raw = tmp_path / "raw"
+    shutil.copytree(potsdam_raw, raw)
+    empty = find_tiles(_data_cfg(raw, raw))["4_10"].ndsm
+    empty.write_bytes(b"")
+    assert find_tiles(_data_cfg(raw, raw))["4_10"].ndsm is None
+    report = inspect_dataset(_data_cfg(raw, raw, ndsm=True))
+    bad = {r["tile"]: r["notes"] for r in report["tiles"] if "ERROR" in r["notes"]}
+    assert bad == {"4_10": "nDSM missing (ERROR)"} and report["errors"] == 1
+
+
 def test_fit_to_pads_small_mismatches_only():
     a = np.arange(90, dtype=np.float32).reshape(10, 9)
     out = fit_to(a, (10, 10), "x")

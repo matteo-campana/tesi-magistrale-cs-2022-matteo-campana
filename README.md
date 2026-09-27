@@ -8,7 +8,7 @@ Dr. Simone Scardapane e Dr. Valerio Marsocci.
 **Keras 3 su backend PyTorch · tracking con MLflow · eseguibile su una singola GPU NVIDIA RTX 4060 (8 GB).**
 
 > **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione), con Vaihingen,
-> nDSM e campagne di esperimenti. È verificato da 74 test automatici, da run end-to-end su dati sintetici e da run
+> nDSM e campagne di esperimenti. È verificato da 78 test automatici, da run end-to-end su dati sintetici e da run
 > brevi sui dati ISPRS reali su RTX 4060. Gli esperimenti completi sono il prossimo passo: vedi il
 > [piano](docs/PIANO_DI_SVILUPPO.md) e i [tempi stimati](docs/ESECUZIONE_E_TEMPI.md).
 
@@ -144,7 +144,7 @@ reimplementazione verranno pubblicati in `docs/RISULTATI.md`.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                       # 74 test, ~2 min (dettagli e tempi: docs/ESECUZIONE_E_TEMPI.md)
+pytest -q                       # 78 test, ~2 min (dettagli e tempi: docs/ESECUZIONE_E_TEMPI.md)
 ruff check src tests && ruff format --check src tests
 ```
 

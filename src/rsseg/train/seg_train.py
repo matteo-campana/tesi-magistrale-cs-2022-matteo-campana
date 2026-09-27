@@ -24,6 +24,7 @@ from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
 from rsseg.train.callbacks import (
     CodebookMonitor,
     PredictionLogger,
+    ProgressReporter,
     RichProgressBar,
     TopKCheckpoint,
 )
@@ -120,6 +121,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
         keras.callbacks.CSVLogger(str(run_dir / "history.csv")),
         MLflowMetricsLogger(),
         RichProgressBar(keys=("loss", "miou")),
+        ProgressReporter("train", "val_miou", cfg.train.early_stopping_patience),
     ]
     if cfg.train.early_stopping_patience:
         callbacks.insert(

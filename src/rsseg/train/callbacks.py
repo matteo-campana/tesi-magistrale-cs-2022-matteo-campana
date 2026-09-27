@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Training callbacks: top-k checkpoints, codebook health and qualitative predictions (both
-logged to MLflow) and a rich progress bar that replaces the Keras one.
+logged to MLflow), a rich progress bar that replaces the Keras one and the progress shared with
+``rsseg campaign``.
 
 Place these callbacks *before* :class:`rsseg.tracking.MLflowMetricsLogger`: they add entries to
 ``logs`` that the logger then records.
@@ -12,6 +13,7 @@ import json
 import logging
 import math
 import shutil
+import time
 from pathlib import Path
 
 import keras
@@ -21,6 +23,7 @@ import numpy as np
 from rsseg.console import err_console, format_value, make_progress
 from rsseg.eval.visualize import save_panels
 from rsseg.models.quantizer import find_quantizers
+from rsseg.progress import report
 
 log = logging.getLogger(__name__)
 
@@ -163,3 +166,56 @@ class RichProgressBar(keras.callbacks.Callback):
             except (TypeError, ValueError):
                 continue
         err_console.log(f"[title]epoch {epoch + 1}/{self.epochs}[/]  " + "  ".join(parts))
+
+
+class ProgressReporter(keras.callbacks.Callback):
+    """Share epoch, batch and ``monitor`` with ``rsseg campaign`` (see :mod:`rsseg.progress`).
+
+    ``patience`` mirrors the early stopping: the campaign shows how many epochs without an
+    improvement of ``monitor`` are left before training stops.
+    """
+
+    def __init__(self, phase: str = "train", monitor: str | None = "val_miou",
+                 patience: int | None = None, every: int = 10):  # fmt: skip
+        super().__init__()
+        self.phase, self.monitor, self.patience, self.every = phase, monitor, patience, every
+        self.best = -math.inf
+        self.best_epoch = 0
+        self.durations: list[float] = []
+        self.t_epoch = 0.0
+
+    def on_train_begin(self, logs=None):
+        report(phase=self.phase, stage="train", epoch=0, epochs=self.params.get("epochs"),
+               batch=0, steps=self.params.get("steps"), patience=self.patience)  # fmt: skip
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.t_epoch = time.time()
+        report(stage="train", epoch=epoch + 1, batch=0)
+
+    def on_train_batch_end(self, batch, logs=None):
+        if (batch + 1) % self.every == 0:
+            report(batch=batch + 1)
+
+    def on_test_begin(self, logs=None):
+        report(stage="validation")
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        self.durations.append(time.time() - self.t_epoch)
+        fields = {"epoch_s": sum(self.durations) / len(self.durations),
+                  "loss": _number(logs.get("loss"))}  # fmt: skip
+        value = _number(logs.get(self.monitor)) if self.monitor else None
+        if value is not None:
+            if value > self.best:  # same rule as keras.callbacks.EarlyStopping (min_delta 0)
+                self.best, self.best_epoch = value, epoch + 1
+            fields |= {"monitor": self.monitor, "value": value, "best": self.best,
+                       "best_epoch": self.best_epoch, "since_best": epoch + 1 - self.best_epoch}  # fmt: skip
+        report(**fields)
+
+
+def _number(v) -> float | None:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(v) else v
