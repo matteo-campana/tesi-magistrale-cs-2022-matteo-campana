@@ -5,15 +5,36 @@
   (aerial images have no canonical orientation, so flips and 90° rotations are label-preserving).
 * :class:`MultiCropAugment` — DINO multi-crop (2 global + N local views), optionally with the
   milder "aerial" colour policy.
+
+Both draw from Python's ``random`` and torch's CPU generator. :func:`seeded` makes one call
+depend only on a per-sample seed (see :class:`rsseg.data.datasets.StreamSampler`), so the
+augmentation of a sample is the same whatever the number of workers and after a resume.
 """
 
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import numpy as np
+import torch
 from PIL import Image, ImageFilter, ImageOps
 from torchvision import transforms as T
+
+
+@contextmanager
+def seeded(seed: int) -> Iterator[None]:
+    """Seed ``random`` and torch's CPU generator for the block, then restore their state."""
+    py_state = random.getstate()
+    torch_state = torch.random.get_rng_state()
+    random.seed(seed)
+    torch.random.default_generator.manual_seed(seed)
+    try:
+        yield
+    finally:
+        random.setstate(py_state)
+        torch.random.set_rng_state(torch_state)
 
 
 class JointAugment:

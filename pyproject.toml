@@ -30,12 +30,15 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5"]
+gui = ["PySide6>=6.6", "pyqtgraph>=0.13.7", "nvidia-ml-py>=12.535", "psutil>=5.9"]
 
 [project.scripts]
 rsseg = "rsseg.cli:main"
+rsseg-gui = "rsseg.gui:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rsseg"]
+artifacts = ["src/rsseg/gui/help_it.yaml"]
 
 [tool.ruff]
 line-length = 100

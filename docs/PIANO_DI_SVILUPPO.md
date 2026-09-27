@@ -17,6 +17,7 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 | F5 Campagne di esperimenti | ✅ `rsseg campaign` | 🟡 prove `--quick` e benchmark su RTX 4060; campagne complete da lanciare |
 | F6 Report e rilascio | ⬜ | ⬜ |
 | F7 Vaihingen, nDSM, pool DINO | ✅ | 🟡 |
+| F8 App desktop, pausa/ripresa, inferenza | ✅ `rsseg-gui`, `--resume`, `rsseg predict` | 🟡 da provare sulla RTX 4060 (monitor NVML reale) |
 
 ---
 
@@ -89,6 +90,16 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
   per città
 - 🟡 Esperimenti: RGB vs RGB+nDSM su Potsdam e Vaihingen; nDSM ufficiale vs calcolato; DINO con e senza pool
 - ⬜ Cross-dataset: Potsdam IRRG → Vaihingen (stesso falso colore)
+
+## Fase 8: Applicazione desktop, pausa e ripresa, inferenza
+- ✅ Avanzamento e controllo dei comandi tramite file (`progress.json`, `control.json`), codici di uscita 10/11
+- ✅ Pausa e ripresa esatta di training, DINO, valutazione e campagne (`--resume`), checkpoint automatici
+- ✅ `rsseg predict` su immagini qualsiasi o tile di uno split, con confidenza ed errori
+- ✅ `rsseg-gui`: configurazione con suggerimenti, job con fasi e tempi, GPU, dati, campagne, risultati, inferenza
+  ([APP_DESKTOP.md](APP_DESKTOP.md))
+- ⬜ Verifica sulla RTX 4060 con Windows: NVML, processi in background dopo la chiusura, tempi di ripresa
+
+---
 
 ## Fase 6: Documentazione e rilascio
 - ⬜ `docs/RISULTATI.md`: confronto tesi 2022 vs reimplementazione, risposta a ciascuna RQ

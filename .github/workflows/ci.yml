@@ -15,6 +15,7 @@ jobs:
     env:
       KERAS_BACKEND: torch
       MLFLOW_DISABLE_AGENT_HINT: "1"
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v5
       # setup-uv creates `.venv` for this Python and activates it (explicit: the default changed in v6).
@@ -23,10 +24,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           activate-environment: true
           cache-dependency-glob: pyproject.toml
+      - name: Qt system libraries (headless GUI tests)
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: Install (CPU PyTorch)
         run: |
           uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          uv pip install -e ".[dev]"
+          uv pip install -e ".[dev,gui]"
       - name: Lint
         run: |
           uv run --no-sync ruff check src tests

@@ -48,6 +48,21 @@ class TopKCheckpoint(keras.callbacks.Callback):
         self.monitor = monitor
         self.kept: list[tuple[float, int, Path]] = []  # (value, epoch, path), best first
 
+    def get_state(self) -> dict:
+        return {"kept": [[v, e, p.name] for v, e, p in self.kept]}
+
+    def set_state(self, state: dict, from_epoch: int | None = None) -> None:
+        """Restore the kept checkpoints; files of epochs ``>= from_epoch`` that are not listed
+        (written after the resume checkpoint, before a crash) are deleted."""
+        self.kept = [(v, e, self.directory / name) for v, e, name in state["kept"]]
+        if from_epoch is not None and self.directory.exists():
+            listed = {p for _, _, p in self.kept}
+            for path in self.directory.glob("epoch_*.weights.h5"):
+                if path not in listed and int(path.name.split("_")[1]) > from_epoch:
+                    path.unlink(missing_ok=True)
+        if self.kept:
+            shutil.copyfile(self.kept[0][2], self.best_path)
+
     def on_epoch_end(self, epoch, logs=None):
         value = (logs or {}).get(self.monitor)
         if value is None or math.isnan(float(value)):
@@ -116,15 +131,16 @@ class RichProgressBar(keras.callbacks.Callback):
     summary line shows all numeric entries of ``logs``).
     """
 
-    def __init__(self, keys: tuple[str, ...] = ("loss", "miou")):
+    def __init__(self, keys: tuple[str, ...] = ("loss", "miou"), epochs: int | None = None):
         super().__init__()
         self.keys = keys
         self.progress = None
         self.task = None
+        self.total_epochs = epochs
         self.epochs = 0
 
     def on_train_begin(self, logs=None):
-        self.epochs = self.params.get("epochs") or 0
+        self.epochs = self.total_epochs or self.params.get("epochs") or 0
         self.progress = make_progress(transient=True)
         self.progress.start()
 
@@ -169,48 +185,76 @@ class RichProgressBar(keras.callbacks.Callback):
 
 
 class ProgressReporter(keras.callbacks.Callback):
-    """Share epoch, batch and ``monitor`` with ``rsseg campaign`` (see :mod:`rsseg.progress`).
+    """Share epoch, batch, ``monitor`` and the per-epoch history through :mod:`rsseg.progress`.
 
-    ``patience`` mirrors the early stopping: the campaign shows how many epochs without an
-    improvement of ``monitor`` are left before training stops.
+    ``patience`` mirrors the early stopping: the launcher shows how many epochs without an
+    improvement of ``monitor`` are left before training stops. ``epochs`` and ``steps`` are the
+    totals of the whole run: a resumed run calls ``fit`` on part of it (:mod:`rsseg.train.resume`),
+    and :attr:`batch_offset` counts the batches of the current epoch done before the resume.
     """
 
     def __init__(self, phase: str = "train", monitor: str | None = "val_miou",
-                 patience: int | None = None, every: int = 10):  # fmt: skip
+                 patience: int | None = None, every: int = 10, epochs: int | None = None,
+                 steps: int | None = None):  # fmt: skip
         super().__init__()
         self.phase, self.monitor, self.patience, self.every = phase, monitor, patience, every
+        self.epochs, self.steps = epochs, steps
         self.best = -math.inf
         self.best_epoch = 0
         self.durations: list[float] = []
+        self.history: list[dict] = []
         self.t_epoch = 0.0
+        self.batch_offset = 0
+
+    def get_state(self) -> dict:
+        return {"best": self.best, "best_epoch": self.best_epoch, "durations": self.durations,
+                "history": self.history}  # fmt: skip
+
+    def set_state(self, state: dict) -> None:
+        self.best, self.best_epoch = state["best"], state["best_epoch"]
+        self.durations, self.history = list(state["durations"]), list(state["history"])
 
     def on_train_begin(self, logs=None):
-        report(phase=self.phase, stage="train", epoch=0, epochs=self.params.get("epochs"),
-               batch=0, steps=self.params.get("steps"), patience=self.patience)  # fmt: skip
+        fields = {"phase": self.phase, "stage": "train", "epochs": self.epochs or
+                  self.params.get("epochs"), "steps": self.steps or self.params.get("steps"),
+                  "patience": self.patience, "history": self.history}  # fmt: skip
+        if self.best_epoch:
+            fields |= {"monitor": self.monitor, "best": self.best, "best_epoch": self.best_epoch}
+        if self.durations:
+            fields["epoch_s"] = sum(self.durations) / len(self.durations)
+        report(**fields)
 
     def on_epoch_begin(self, epoch, logs=None):
         self.t_epoch = time.time()
-        report(stage="train", epoch=epoch + 1, batch=0)
+        report(stage="train", epoch=epoch + 1, batch=self.batch_offset)
 
     def on_train_batch_end(self, batch, logs=None):
         if (batch + 1) % self.every == 0:
-            report(batch=batch + 1)
+            report(batch=self.batch_offset + batch + 1)
 
     def on_test_begin(self, logs=None):
         report(stage="validation")
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        self.durations.append(time.time() - self.t_epoch)
-        fields = {"epoch_s": sum(self.durations) / len(self.durations),
-                  "loss": _number(logs.get("loss"))}  # fmt: skip
+        if not self.batch_offset:  # a resumed epoch has no reliable duration
+            self.durations.append(time.time() - self.t_epoch)
+        self.batch_offset = 0
+        fields: dict = {"loss": _number(logs.get("loss"))}
+        if self.durations:
+            fields["epoch_s"] = sum(self.durations) / len(self.durations)
         value = _number(logs.get(self.monitor)) if self.monitor else None
         if value is not None:
             if value > self.best:  # same rule as keras.callbacks.EarlyStopping (min_delta 0)
                 self.best, self.best_epoch = value, epoch + 1
             fields |= {"monitor": self.monitor, "value": value, "best": self.best,
                        "best_epoch": self.best_epoch, "since_best": epoch + 1 - self.best_epoch}  # fmt: skip
-        report(**fields)
+        entry = {"epoch": epoch + 1}
+        for k, v in logs.items():
+            if (x := _number(v)) is not None:
+                entry[k] = x
+        self.history.append(entry)
+        report(history=self.history, **fields)
 
 
 def _number(v) -> float | None:

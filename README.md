@@ -8,7 +8,7 @@ Dr. Simone Scardapane e Dr. Valerio Marsocci.
 **Keras 3 su backend PyTorch · tracking con MLflow · eseguibile su una singola GPU NVIDIA RTX 4060 (8 GB).**
 
 > **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione), con Vaihingen,
-> nDSM e campagne di esperimenti. È verificato da 80 test automatici, da run end-to-end su dati sintetici e da run
+> nDSM e campagne di esperimenti. È verificato da 109 test automatici, da run end-to-end su dati sintetici e da run
 > brevi sui dati ISPRS reali su RTX 4060. Gli esperimenti completi sono il prossimo passo: vedi il
 > [piano](docs/PIANO_DI_SVILUPPO.md) e i [tempi stimati](docs/ESECUZIONE_E_TEMPI.md).
 
@@ -65,6 +65,20 @@ rsseg prepare-unlabeled --source toronto --raw data/download/Toronto/Images --ou
 rsseg pretrain -c configs/ssl/dino_r18_toronto.yaml                              # DINO con il pool di Toronto
 ```
 
+## Applicazione desktop
+
+`rsseg-gui` è un'interfaccia Qt per fare tutto quanto sopra senza riga di comando: configurazione con un
+suggerimento su ogni impostazione, barre di avanzamento con fasi, tempo trascorso e stimato, **pausa e ripresa esatta
+del training anche dopo aver chiuso l'app**, monitoraggio della GPU, risultati e **inferenza** con i modelli
+addestrati. Guida: [docs/APP_DESKTOP.md](docs/APP_DESKTOP.md).
+
+```bash
+pip install -e ".[gui]"
+rsseg-gui                                            # dalla cartella del progetto
+rsseg train --resume runs/seg-…                      # riprende un run in pausa (anche da riga di comando)
+rsseg predict --run runs/seg-… --split test --out runs/predictions/prova
+```
+
 Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni): [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md).
 
 ## Comandi
@@ -74,9 +88,10 @@ Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni)
 | `rsseg synth` | Genera tile sintetiche con gli stessi nomi di file di Potsdam |
 | `rsseg prepare` | Split per tile, conversione e controllo delle etichette, crop, nDSM, manifest, statistiche (`--dry-run`: solo verifica) |
 | `rsseg prepare-unlabeled` | Crop non etichettati dai frame aerei grezzi (Toronto, Vaihingen) per DINO |
-| `rsseg train` | Training con Keras `fit` + valutazione su tile intere + log su MLflow |
+| `rsseg train` | Training con Keras `fit` + valutazione su tile intere + log su MLflow (`--resume RUN_DIR` riprende un run in pausa) |
 | `rsseg pretrain` | Pre-training DINO dell'encoder ed export del backbone |
 | `rsseg evaluate` | Valuta un file di pesi su tile intere (finestra scorrevole) |
+| `rsseg predict` | Segmenta immagini qualsiasi o le tile di uno split con un modello addestrato (maschere, confidenza, errori) |
 | `rsseg benchmark` | Picco di VRAM e immagini/s di una configurazione |
 | `rsseg report` | Tabella media ± std su più run (es. seed) |
 | `rsseg campaign` | Esegue o riprende una campagna di esperimenti (`configs/campaigns/`), con prerequisiti, log e report |
@@ -115,11 +130,12 @@ risultati su stdout; con `--json` (prima o dopo il sotto-comando) si ottiene il 
 | [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md) | Esecuzione su RTX 4060 8 GB, memoria misurata, campagne, MLflow |
 | [docs/ESECUZIONE_E_TEMPI.md](docs/ESECUZIONE_E_TEMPI.md) | Come lanciare test ed esperimenti, con i tempi di esecuzione misurati e stimati |
 | [docs/PIANO_DI_SVILUPPO.md](docs/PIANO_DI_SVILUPPO.md) | Stato delle fasi, esperimenti da eseguire, rischi |
+| [docs/APP_DESKTOP.md](docs/APP_DESKTOP.md) | Applicazione `rsseg-gui`: sezioni, tempi, pausa e ripresa, GPU, inferenza |
 
 ## Struttura
 
 ```
-src/rsseg/      pacchetto (data, models, ssl, train, eval, campaign, cli)
+src/rsseg/      pacchetto (data, models, ssl, train, eval, campaign, cli, gui)
 configs/        base.yaml, smoke.yaml, datasets/, experiments/, ssl/, campaigns/
 scripts/        griglia della tesi (wrapper della campagna thesis_grid)
 tests/          test automatici (pytest)
@@ -144,7 +160,7 @@ reimplementazione verranno pubblicati in `docs/RISULTATI.md`.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                       # 80 test, ~2 min (dettagli e tempi: docs/ESECUZIONE_E_TEMPI.md)
+pytest -q                       # 109 test, ~3 min (dettagli e tempi: docs/ESECUZIONE_E_TEMPI.md)
 ruff check src tests && ruff format --check src tests
 ```
 

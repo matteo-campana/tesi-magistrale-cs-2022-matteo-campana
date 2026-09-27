@@ -3,6 +3,7 @@
 
 import contextlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from rsseg.campaign import (
 )
 from rsseg.cli import main
 from rsseg.config import load_config
+from rsseg.control import EXIT_PAUSED
 from rsseg.data.datasets import read_crops
 from rsseg.data.prepare import prepare_dataset
 from rsseg.data.synthetic import make_synthetic_potsdam
@@ -60,12 +62,19 @@ def _write(path: Path, data: dict) -> Path:
 class FakeRunner:
     """Creates the files a real step would create; ``fail`` lists step names that fail."""
 
-    def __init__(self, fail=()):
-        self.fail = set(fail)
+    def __init__(self, fail=(), pause=()):
+        self.fail, self.pause = set(fail), set(pause)
         self.calls: list[str] = []
 
     def __call__(self, cmd, log_path, stdout=None):
         kind = cmd[4]
+        if "--resume" in cmd:  # a paused step continues in its run folder
+            run = Path(cmd[cmd.index("--resume") + 1])
+            self.calls.append(f"{kind}:resume:{run.name}")
+            shutil.rmtree(run / "resume")
+            report = {"name": run.name, "all_classes": SCORES, "without_clutter": SCORES}
+            (run / "report.json").write_text(json.dumps(report), encoding="utf-8")
+            return 0
         sets = dict(a.split("=", 1) for a in cmd[cmd.index("--set") + 1 :] if "=" in a)
         name = sets.get("name", Path(log_path).parent.name)
         self.calls.append(f"{kind}:{name}")
@@ -73,6 +82,12 @@ class FakeRunner:
         log_path.write_text("fake\n", encoding="utf-8")
         if name in self.fail:
             return 1
+        if name in self.pause and kind == "train":
+            self.pause.discard(name)
+            run = Path(sets["output_dir"]) / f"seg-{name}-20260101-000000"
+            (run / "resume").mkdir(parents=True)
+            (run / "resume" / "state.json").write_text('{"phase": "evaluation"}', "utf-8")
+            return EXIT_PAUSED
         if kind == "pretrain":
             Path(sets["ssl.export_path"]).write_bytes(b"weights")
         elif kind == "train":
@@ -191,6 +206,18 @@ def test_run_prepares_data_continues_after_failures_and_resumes(tmp_path, raw):
     assert sorted(runner2.calls) == sorted(["pretrain:dino_bad", "train:lf0.5", "train:lf0.5",
                                             "train:ft_bad", "train:ft_bad"])  # fmt: skip
     assert summary2["counts"] == {"done": 13}
+
+
+def test_paused_step_stops_the_campaign_and_resumes(tmp_path, raw):
+    c = select(load_campaign(_campaign(tmp_path, raw)), ["base__*"])
+    runner = FakeRunner(pause={"base"})
+    summary = run_campaign(c, _opts(tmp_path), runner, _counter)
+    assert summary["interrupted"] == "paused" and summary["steps"]["base__s0"]["state"] == "paused"
+    assert runner.calls == ["train:base"]  # the campaign stops at the paused step
+    runner2 = FakeRunner()
+    summary2 = run_campaign(c, _opts(tmp_path), runner2, _counter)
+    assert runner2.calls == ["train:resume:seg-base-20260101-000000", "train:base"]
+    assert summary2["counts"] == {"done": 2} and "interrupted" not in summary2
 
 
 def test_stop_on_error_and_quick_root(tmp_path, raw):

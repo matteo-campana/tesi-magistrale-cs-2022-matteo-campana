@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import keras
 import numpy as np
 from PIL import Image
 
+from rsseg import control
 from rsseg.config import EvalConfig
 from rsseg.console import track
 from rsseg.data.classes import CLASS_NAMES, CLUTTER, NUM_CLASSES, index_to_rgb
@@ -37,9 +39,18 @@ def _scores(cm: np.ndarray) -> dict:
 
 
 def evaluate_tiles(
-    model: keras.Model, data_root: str | Path, cfg: EvalConfig, out_dir: str | Path | None = None
+    model: keras.Model,
+    data_root: str | Path,
+    cfg: EvalConfig,
+    out_dir: str | Path | None = None,
+    state_path: str | Path | None = None,
 ) -> dict:
-    """Sliding-window evaluation of whole tiles. A 4-channel model also reads the tile nDSM."""
+    """Sliding-window evaluation of whole tiles. A 4-channel model also reads the tile nDSM.
+
+    With ``state_path`` the confusion matrices are saved after every tile and the evaluation is
+    pausable between tiles (:mod:`rsseg.control`): run again with the same ``state_path``, it
+    skips the tiles already scored. Without it a pause request stops the evaluation.
+    """
     tiles = read_tiles(data_root, cfg.split)
     if cfg.max_tiles:
         tiles = tiles[: cfg.max_tiles]
@@ -55,10 +66,18 @@ def evaluate_tiles(
     total = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64)
     total_eroded = np.zeros_like(total)
     per_tile = {}
-    t0 = time.time()
+    state = _read_eval_state(state_path)
+    if state is not None:
+        total += np.asarray(state["total"], dtype=np.int64)
+        total_eroded += np.asarray(state["total_eroded"], dtype=np.int64)
+        per_tile = dict(state["per_tile"])
+    t0, timed = time.time(), 0
     for i, row in enumerate(track(tiles, f"evaluating {cfg.split} tiles")):
+        if row["tile"] in per_tile:
+            continue
+        control.check(pausable=state_path is not None)
         report_progress(phase="evaluation", stage=cfg.split, tile=i + 1, tiles=len(tiles),
-                        tile_s=(time.time() - t0) / i if i else None)  # fmt: skip
+                        tile_s=(time.time() - t0) / timed if timed else None)  # fmt: skip
         image = load_image(row["image"], Path(data_root) / row["ndsm"] if use_ndsm else None)
         gt = load_mask(Path(data_root) / row["mask"])
         pred = predict_tile(
@@ -77,6 +96,9 @@ def evaluate_tiles(
             pred_dir.mkdir(parents=True, exist_ok=True)
             Image.fromarray(index_to_rgb(pred)).save(pred_dir / f"{row['tile']}_pred.png")
             Image.fromarray(error_map(gt, pred)).save(pred_dir / f"{row['tile']}_errors.png")
+        timed += 1
+        if state_path is not None:
+            _write_eval_state(state_path, total, total_eroded, per_tile)
     report = {
         "split": cfg.split,
         "tiles": [r["tile"] for r in tiles],
@@ -87,6 +109,24 @@ def evaluate_tiles(
     if eroded:
         report["eroded"] = {**_scores(total_eroded), "confusion_matrix": total_eroded.tolist()}
     return report
+
+
+def _read_eval_state(path: str | Path | None) -> dict | None:
+    if path is None:
+        return None
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _write_eval_state(path: str | Path, total, total_eroded, per_tile: dict) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"total": total.tolist(), "total_eroded": total_eroded.tolist(),
+                               "per_tile": per_tile}), encoding="utf-8")  # fmt: skip
+    os.replace(tmp, path)
 
 
 def report_metrics(report: dict, prefix: str) -> dict[str, float]:

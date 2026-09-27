@@ -1,0 +1,338 @@
+# Suggerimenti dell'applicazione (italiano), mostrati passando il mouse su ogni impostazione.
+# Ogni voce: text (cosa fa), values (valori ammessi), effects (effetti pratici), doc (approfondimento).
+# Il valore predefinito e il file da cui arriva sono aggiunti automaticamente.
+# tests/test_gui_core.py verifica che ogni campo di configurazione abbia qui la sua voce.
+
+config:
+  # ------------------------------------------------------------------ generale
+  name:
+    text: "Nome dell'esperimento. Compare nel nome della cartella del run (seg-<nome>-<data>) e in MLflow."
+  output_dir:
+    text: "Cartella in cui vengono create le cartelle dei run (checkpoint, report, log, predizioni)."
+
+  # ------------------------------------------------------------------ dati
+  data.dataset:
+    text: "Dataset ISPRS da usare. Determina la struttura dei file originali e gli split standard."
+    values: {potsdam: "Potsdam, 5 cm/pixel, tile 6000×6000", vaihingen: "Vaihingen, 9 cm/pixel, tile di dimensioni variabili"}
+    doc: docs/DATASET.md
+  data.raw_dir:
+    text: "Cartella con i file originali scaricati da ISPRS (cercati anche nelle sottocartelle). Serve solo a «Prepara dati»."
+  data.root:
+    text: "Cartella prodotta da «Prepara dati» con crop, maschere, manifest (crops.csv, tiles.csv) e statistiche. Training e valutazione leggono da qui."
+    effects: "Ogni variante dei dati (es. con nDSM calcolato) deve avere la sua cartella."
+  data.protocol:
+    text: "Protocollo di suddivisione delle tile in train, validazione e test."
+    values: {standard: "split della letteratura (confrontabile con gli articoli)", thesis2022: "split usato nella tesi originale (solo Potsdam)"}
+    doc: docs/ANALISI_TESI.md
+  data.val_tiles:
+    text: "Tile da usare come validazione al posto di quelle predefinite. Sono escluse per intero dal training."
+  data.exclude_7_10:
+    text: "Esclude la tile 7_10 di Potsdam, che ha etichette note per essere errate."
+  data.image_pattern:
+    text: "Espressione regolare che sceglie i file immagine tra quelli originali (es. _IRRG\\.tif$ per usare infrarosso-rosso-verde). Vuoto = predefinito del dataset."
+  data.label_pattern:
+    text: "Espressione regolare che sceglie i file delle etichette (e il loro ordine di priorità). Vuoto = predefinito del dataset."
+  data.train_labels:
+    text: "Etichette usate per i crop di training e validazione."
+    values: {full: "etichette complete (come nella tesi)", eroded: "etichette senza i bordi degli oggetti"}
+  data.max_offpalette:
+    text: "Frazione massima di pixel delle etichette con colori fuori dalla palette ISPRS. Oltre questa soglia la tile viene rifiutata come corrotta."
+  data.ndsm:
+    text: "Aggiunge l'altezza sul terreno (nDSM) come 4° canale di input oltre a RGB."
+    effects: "Il modello passa a 4 canali; serve preparare i dati con questa opzione attiva."
+    doc: docs/DATASET.md
+  data.ndsm_source:
+    text: "Da dove prendere l'nDSM."
+    values: {official: "JPG ufficiali di Potsdam", computed: "calcolato dal DSM (apertura morfologica)", auto: "ufficiale se disponibile, altrimenti calcolato"}
+  data.ndsm_variant:
+    text: "Variante dell'nDSM ufficiale di Potsdam."
+    values: {lastools: "consigliata", ownapproach: "11 file su 38 sono vuoti nell'archivio ISPRS"}
+  data.crop_size:
+    text: "Lato in pixel dei crop quadrati usati per il training."
+    effects: "Più grande = più contesto ma più VRAM (circa proporzionale all'area)."
+  data.train_stride:
+    text: "Passo tra crop di training consecutivi. Minore del lato = crop sovrapposti (più campioni per epoca). La sovrapposizione è ammessa solo nel training."
+  data.label_fraction:
+    text: "Frazione di crop etichettati usati nel training, scelti per ogni tile. Simula il regime con poche etichette (domanda di ricerca RQ3)."
+    effects: "1.0 = tutte le etichette."
+  data.full_length_epochs:
+    text: "Con label_fraction < 1, ripete i crop etichettati (rimescolati a ogni passata) perché ogni epoca abbia lo stesso numero di batch che con tutte le etichette."
+    effects: "Così ogni frazione riceve lo stesso numero di aggiornamenti e lo stesso early stopping."
+  data.augment:
+    text: "Augmentazione geometrica (flip e rotazioni di 90°), applicata insieme a immagine e maschera."
+  data.num_workers:
+    text: "Processi che caricano le immagini in parallelo durante il training."
+    effects: "Se l'utilizzo della GPU resta basso durante il training, aumentarlo può aiutare. 0 = caricamento nel processo principale. Si può cambiare anche alla ripresa."
+  data.prepare_workers:
+    text: "Processi usati da «Prepara dati» per elaborare le tile in parallelo."
+    effects: "Ogni processo tiene in memoria una tile intera (~0,5 GB per Potsdam)."
+
+  # ------------------------------------------------------------------ modello
+  model.arch:
+    text: "Encoder (backbone) della rete."
+    values: {resnet18: "11 M parametri, il più veloce", resnet34: "21 M", resnet50: "24 M", swin_t: "Swin Transformer Tiny", swin_s: "Swin Small", swin_b: "Swin Base", vit_s_16: "ViT Small/16 (adatto a DINO)", vit_b_16: "ViT Base/16", vit_l_16: "ViT Large/16"}
+    effects: "Encoder più grandi richiedono più VRAM e tempo: verifica con «Entra in 8 GB?»."
+  model.weights:
+    text: "Pesi iniziali dell'encoder."
+    values: {imagenet: "pre-addestrati su ImageNet (torchvision)", none: "inizializzazione casuale", "<file>.weights.h5": "backbone esportato da un pre-training DINO"}
+  model.drop_path:
+    text: "Tasso massimo di stochastic depth degli encoder transformer (ignorato dalle ResNet). Regolarizzazione."
+  model.skip:
+    text: "Tipo di connessioni skip tra encoder e decoder."
+    values: {lam: "Linear Attention Mechanism + channel attention (MAResU-Net)", plain: "skip semplici come una U-Net (ablation)"}
+  model.neck:
+    text: "Blocco al centro della rete (bottleneck)."
+    values: {identity: "nessuna modifica", vq: "quantizzazione vettoriale (VQ-VAE) con codebook"}
+  model.vq.num_codes:
+    text: "Numero di vettori (codici) nel codebook della quantizzazione."
+  model.vq.code_dim:
+    text: "Dimensione dei codici. Se diversa dai canali del bottleneck viene aggiunta una proiezione 1×1. Vuoto = uguale ai canali."
+  model.vq.beta:
+    text: "Peso del termine di commitment della loss VQ (quanto l'encoder è spinto verso i codici)."
+  model.vq.ema_decay:
+    text: "Decadimento della media mobile (EMA) con cui si aggiorna il codebook. 0 = codebook appreso con il gradiente."
+  model.vq.loss_weight:
+    text: "Peso della loss VQ rispetto alla cross-entropy di segmentazione."
+  model.vq.restart_dead_codes:
+    text: "Riavvia i codici inutilizzati usando feature del batch, per evitare il collasso del codebook."
+  model.vq.dead_code_threshold:
+    text: "Soglia (media EMA delle assegnazioni per batch) sotto la quale un codice è considerato morto e viene riavviato."
+  model.vq.on_skips:
+    text: "Quantizza anche le connessioni skip; altrimenti il decoder può aggirare il codebook passando dalle skip."
+  model.num_classes:
+    text: "Numero di classi da segmentare (6 per ISPRS, clutter incluso)."
+  model.dropout:
+    text: "Probabilità di dropout nei blocchi di attenzione del decoder."
+  model.in_channels:
+    text: "Canali di input (3 = RGB, 4 = RGB + nDSM). Impostato automaticamente da data.ndsm."
+  model.extra_channel_mean:
+    text: "Media usata per normalizzare i canali oltre i primi tre (nDSM). Vuoto = da stats.json dei dati."
+  model.extra_channel_std:
+    text: "Deviazione standard per normalizzare i canali extra. Vuoto = da stats.json dei dati."
+  model.extra_channel_init:
+    text: "Pesi iniziali del primo strato per i canali extra quando si allarga un encoder a 3 canali."
+    values: {mean: "media dei kernel RGB", zeros: "zeri: la rete pre-addestrata resta inizialmente invariata"}
+
+  # ------------------------------------------------------------------ training
+  train.epochs:
+    text: "Numero massimo di epoche. Con early stopping il training può finire prima."
+    effects: "Determina la durata stimata del run."
+  train.batch_size:
+    text: "Immagini elaborate insieme in un passo."
+    effects: "Più grande = più VRAM. 8 × 512² entra in 8 GB con bf16; verifica con «Entra in 8 GB?»."
+  train.grad_accum_steps:
+    text: "Accumulo del gradiente su più batch prima di aggiornare i pesi."
+    effects: "Batch effettivo = batch_size × grad_accum_steps (32 nella tesi) senza più VRAM."
+  train.optimizer:
+    text: "Algoritmo di ottimizzazione."
+    values: {adamw: "Adam con weight decay disaccoppiato (predefinito)", adam: "Adam", sgd: "SGD con momento di Nesterov"}
+  train.lr:
+    text: "Learning rate iniziale."
+  train.weight_decay:
+    text: "Weight decay (regolarizzazione L2 disaccoppiata) di AdamW."
+  train.scheduler:
+    text: "Andamento del learning rate durante il training."
+    values: {step: "×gamma ogni step_size epoche (StepLR della tesi)", cosine: "decrescita a coseno fino a min_lr", constant: "costante"}
+  train.step_size:
+    text: "Con scheduler step, epoche tra una riduzione del learning rate e la successiva."
+  train.gamma:
+    text: "Con scheduler step, fattore di riduzione del learning rate (0.4 = −60%)."
+  train.min_lr:
+    text: "Learning rate finale dello scheduler a coseno."
+  train.precision:
+    text: "Precisione numerica dei calcoli."
+    values: {mixed_bfloat16: "consigliata su RTX 30xx/40xx (es. RTX 4060)", mixed_float16: "GPU più vecchie", float32: "precisione piena, più lenta e più VRAM"}
+    effects: "Sulla CPU si usa sempre float32."
+  train.seed:
+    text: "Seme casuale. Determina inizializzazione, ordine dei dati e augmentazione; seed diversi servono per media ± deviazione standard."
+  train.class_weights:
+    text: "Pesi delle classi nella cross-entropy (una lista di 6 valori). Vuoto = tutte uguali."
+  train.steps_per_epoch:
+    text: "Limita il numero di batch di training per epoca. Vuoto = una passata completa dei dati."
+  train.validation_steps:
+    text: "Limita il numero di batch di validazione per epoca. Vuoto = tutta la validazione."
+  train.early_stopping_patience:
+    text: "Ferma il training dopo questo numero di epoche senza miglioramento della mIoU di validazione. Vuoto = disattivato."
+    effects: "Tienilo sopra step_size, perché una riduzione del learning rate spesso fa ripartire i miglioramenti. Il tempo rimanente diventa un intervallo."
+  train.keep_top_k:
+    text: "Checkpoint conservati in <run>/checkpoints: le k epoche con la mIoU di validazione più alta."
+  train.log_images_every:
+    text: "Ogni quante epoche salvare le predizioni su un batch fisso di validazione (visibili in MLflow). 0 = mai."
+  train.checkpoint_every_min:
+    text: "Minuti tra un checkpoint di ripresa automatico e il successivo. Dopo un crash o un'interruzione di corrente la ripresa perde al massimo questo lavoro. 0 = solo in pausa."
+    effects: "Ogni checkpoint occupa circa il triplo dei pesi (pesi + stato dell'optimizer)."
+
+  # ------------------------------------------------------------------ valutazione
+  eval.split:
+    text: "Split valutato su tile intere alla fine del training. Vuoto = nessuna valutazione finale."
+    values: {test: "test", val: "validazione"}
+  eval.window:
+    text: "Lato della finestra scorrevole (multiplo di 32) usata per predire tile intere."
+  eval.stride:
+    text: "Passo della finestra scorrevole. Minore della finestra = finestre sovrapposte, bordi più accurati ma più lento."
+    effects: "Metà della finestra (predefinito) circa quadruplica il lavoro rispetto a nessuna sovrapposizione."
+  eval.batch_size:
+    text: "Finestre elaborate insieme durante la valutazione."
+  eval.tta:
+    text: "Test-time augmentation: media con la predizione dell'immagine specchiata. Circa il doppio del tempo, di solito un piccolo guadagno."
+  eval.max_tiles:
+    text: "Valuta solo le prime N tile dello split (per prove veloci). Vuoto = tutte."
+  eval.save_predictions:
+    text: "Salva le immagini delle predizioni e degli errori per ogni tile nella cartella del run."
+
+  # ------------------------------------------------------------------ DINO
+  ssl.arch:
+    text: "Encoder pre-addestrato con DINO. Deve coincidere con model.arch del training che userà il backbone."
+  ssl.weights:
+    text: "Pesi iniziali dell'encoder prima di DINO (none = da zero, imagenet = continua da ImageNet)."
+  ssl.drop_path:
+    text: "Stochastic depth degli encoder transformer durante DINO (0.1 per ViT)."
+  ssl.epochs:
+    text: "Epoche di pre-training DINO."
+  ssl.batch_size:
+    text: "Immagini per batch; ognuna produce 2 viste globali e N locali."
+    effects: "Il learning rate è scalato di batch_size/256."
+  ssl.lr:
+    text: "Learning rate di base, moltiplicato per batch_size/256 (regola di scaling lineare di DINO)."
+  ssl.min_lr:
+    text: "Learning rate finale dello scheduler a coseno."
+  ssl.warmup_epochs:
+    text: "Epoche di riscaldamento lineare del learning rate."
+  ssl.weight_decay:
+    text: "Weight decay iniziale (cresce a coseno fino a weight_decay_end)."
+  ssl.weight_decay_end:
+    text: "Weight decay finale."
+  ssl.momentum_teacher:
+    text: "Momento iniziale della media mobile del teacher (cresce fino a 1)."
+  ssl.out_dim:
+    text: "Numero di prototipi della testa DINO."
+  ssl.hidden_dim:
+    text: "Neuroni degli strati nascosti della testa di proiezione."
+  ssl.bottleneck_dim:
+    text: "Dimensione del collo di bottiglia della testa prima dei prototipi."
+  ssl.student_temp:
+    text: "Temperatura della softmax dello studente."
+  ssl.warmup_teacher_temp:
+    text: "Temperatura iniziale del teacher."
+  ssl.teacher_temp:
+    text: "Temperatura del teacher dopo il riscaldamento."
+  ssl.warmup_teacher_temp_epochs:
+    text: "Epoche di riscaldamento della temperatura del teacher."
+  ssl.center_momentum:
+    text: "Momento del centro della loss (evita il collasso su un solo prototipo)."
+  ssl.global_crop_size:
+    text: "Lato delle viste globali (viste dal teacher e dallo studente)."
+  ssl.local_crop_size:
+    text: "Lato delle viste locali (solo studente)."
+  ssl.local_crops_number:
+    text: "Numero di viste locali per immagine."
+    effects: "Più viste = più lavoro per passo e più VRAM."
+  ssl.global_crops_scale:
+    text: "Intervallo della frazione di immagine coperta dalle viste globali."
+  ssl.local_crops_scale:
+    text: "Intervallo della frazione di immagine coperta dalle viste locali."
+  ssl.aerial_augment:
+    text: "Augmentazione pensata per le immagini aeree (colori più delicati, flip verticali e rotazioni di 90°). Domanda di ricerca RQ4."
+  ssl.clip_grad:
+    text: "Norma massima del gradiente (gradient clipping). 0 = disattivato."
+  ssl.precision:
+    text: "Precisione numerica del pre-training (come train.precision)."
+  ssl.seed:
+    text: "Seme casuale del pre-training."
+  ssl.steps_per_epoch:
+    text: "Limita i batch per epoca del pre-training. Vuoto = una passata completa."
+  ssl.export_path:
+    text: "Dove salvare il backbone dello studente al termine. Vuoto = <cartella del run>/backbone.weights.h5."
+  ssl.checkpoint_every_min:
+    text: "Minuti tra un checkpoint di ripresa automatico del pre-training e il successivo. 0 = solo in pausa."
+  ssl.extra_pools:
+    text: "Cartelle di crop non etichettati prodotte da «Prepara dati non etichettati», aggiunte al pre-training."
+  ssl.allow_same_city_pool:
+    text: "Consente un pool della stessa città del benchmark. Attenzione, le sue immagini possono coprire le aree di test."
+
+  # ------------------------------------------------------------------ tracking
+  tracking.tracking_uri:
+    text: "Indirizzo di MLflow. Vuoto = variabile MLFLOW_TRACKING_URI oppure sqlite:///mlflow.db nella cartella del progetto."
+  tracking.experiment:
+    text: "Nome dell'esperimento MLflow in cui raggruppare i run."
+  tracking.run_name:
+    text: "Nome del run in MLflow. Vuoto = <tipo>-<nome esperimento>."
+  tracking.tags:
+    text: "Etichette aggiuntive del run MLflow (chiave → valore)."
+
+# ---------------------------------------------------------------------- opzioni e comandi
+options:
+  config_file:
+    text: "File YAML dell'esperimento. Può ereditare da un altro file con «base:»; i valori modificati qui sotto diventano override --set."
+  benchmark:
+    text: "Misura il picco di VRAM e la velocità della configurazione con pochi passi di training. Serve a sapere se il run entra negli 8 GB della GPU prima di lanciarlo."
+  prepare.dry_run:
+    text: "Controlla file, split e anomalie di ogni tile senza scrivere nulla."
+  campaign.dry_run:
+    text: "Mostra il piano della campagna (passi, spazio su disco, tempi stimati) senza eseguire nulla."
+  campaign.quick:
+    text: "Run minuscoli (1 epoca, 20 passi, 1 tile di test) in una cartella separata, per verificare che la campagna funzioni."
+  campaign.only:
+    text: "Esegue solo i run e i benchmark il cui nome corrisponde a questi pattern (es. maresunet_*)."
+  campaign.seeds:
+    text: "Seed separati da virgola, al posto di quelli della campagna."
+  campaign.stop_on_error:
+    text: "Ferma la campagna al primo passo fallito (altrimenti continua con gli altri)."
+  campaign.clean_failed:
+    text: "Cancella le cartelle dei tentativi falliti prima di riprovare (i run in pausa sono conservati)."
+  predict.window:
+    text: "Lato della finestra scorrevole per l'inferenza (multiplo di 32). Vuoto = eval.window del run."
+  predict.stride:
+    text: "Passo tra finestre. Più piccolo = bordi più accurati, inferenza più lenta. Vuoto = eval.stride del run."
+  predict.batch_size:
+    text: "Finestre elaborate insieme. Più grande = più veloce ma più VRAM."
+  predict.tta:
+    text: "Media con la predizione dell'immagine specchiata: circa il doppio del tempo, di solito un piccolo guadagno."
+  predict.checkpoint:
+    text: "Pesi da usare. best.weights.h5 è il checkpoint con la mIoU di validazione più alta; gli altri sono le epoche top-k."
+  predict.split:
+    text: "Predice le tile di uno split dei dati preparati del run, con ground truth: calcola metriche e mappa degli errori."
+  resume:
+    text: "Riprende il job dal checkpoint di ripresa, esattamente dal batch in cui si era fermato, nello stesso run MLflow."
+  pause:
+    text: "Mette in pausa il job. Il training finisce il batch in corso, salva un checkpoint di ripresa e libera la GPU; durante la validazione si ferma a fine epoca."
+  stop:
+    text: "Interrompe il job senza possibilità di ripresa. I checkpoint top-k delle epoche finite restano."
+
+# ---------------------------------------------------------------------- metriche
+metrics:
+  miou:
+    text: "mean Intersection over Union. Media sulle classi di area(pred ∩ vero) / area(pred ∪ vero). Metrica principale della segmentazione."
+  mf1:
+    text: "Media sulle classi dell'F1 (media armonica di precision e recall)."
+  oa:
+    text: "Overall Accuracy. Frazione di pixel classificati correttamente; dominata dalle classi grandi."
+  eroded:
+    text: "Etichette erose, senza i pixel sui bordi degli oggetti. Riferimento del benchmark ISPRS e della maggior parte degli articoli."
+  without_clutter:
+    text: "Metriche calcolate escludendo la classe clutter (sfondo), come fanno molti articoli."
+  confidence:
+    text: "Probabilità della classe predetta (0–1). Valori bassi indicano pixel incerti, spesso sui bordi o su classi rare."
+  loss:
+    text: "Cross-entropy sui pixel etichettati (per DINO, loss di auto-distillazione)."
+  val_miou:
+    text: "mIoU sui crop di validazione alla fine di ogni epoca. Guida early stopping e checkpoint top-k."
+  teacher_entropy:
+    text: "Entropia media del teacher DINO. Se tende a 0, il modello sta collassando su un solo prototipo."
+
+# ---------------------------------------------------------------------- GPU
+gpu:
+  util:
+    text: "Percentuale di tempo in cui la GPU esegue calcoli. Durante il training dovrebbe restare alta; valori bassi indicano un collo di bottiglia nel caricamento dei dati (aumenta data.num_workers)."
+  memory:
+    text: "Memoria della GPU occupata da tutti i processi, non solo da rsseg. Oltre il 95% si rischia l'errore out-of-memory."
+  temperature:
+    text: "Temperatura del chip. Oltre 85 °C la GPU può ridurre la frequenza (thermal throttling)."
+  power:
+    text: "Potenza assorbita rispetto al limite impostato dal driver."
+  clock:
+    text: "Frequenza dei core di calcolo (SM)."
+  processes:
+    text: "Processi che usano la GPU con la memoria di ciascuno. I job di questa applicazione sono evidenziati."
+  torch:
+    text: "Verifica che PyTorch veda davvero la GPU. Con un PyTorch senza CUDA il training girerebbe sulla CPU senza errori, molto lentamente."

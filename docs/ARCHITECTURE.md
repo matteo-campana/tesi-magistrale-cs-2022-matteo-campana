@@ -80,7 +80,9 @@ flowchart LR
 │   ├── cli.py                    # rsseg synth|prepare|prepare-unlabeled|train|pretrain|evaluate|benchmark|report|campaign|backbones
 │   ├── campaign.py               # campagne: espansione YAML, prerequisiti, store condiviso, ripresa, report
 │   ├── eta.py                    # stime di durata dei passi (valori misurati, ricalibrati sui run)
-│   ├── progress.py               # progress.json condiviso tra training e campagna
+│   ├── progress.py               # progress.json: stato, tempi, contatori, storico (campagne, GUI)
+│   ├── control.py                # control.json: richieste di pausa/stop ai comandi in corso
+│   ├── runstate.py               # checkpoint di ripresa visti dall'esterno (senza torch)
 │   ├── data/
 │   │   ├── classes.py            # classi, palette, LUT vettorizzata, mapping legacy
 │   │   ├── sources.py            # layout dei file ISPRS (Potsdam, Vaihingen), priorità delle etichette
@@ -105,14 +107,20 @@ flowchart LR
 │   │   ├── losses.py             # MaskedSparseCrossEntropy (ignora solo 255)
 │   │   ├── metrics.py            # mIoU / mF1 / OA da matrice di confusione globale
 │   │   ├── callbacks.py          # TopKCheckpoint, CodebookMonitor, PredictionLogger, RichProgressBar
+│   │   ├── resume.py             # ResumeCheckpoint, fit_resumable: pausa e ripresa esatta
 │   │   └── seg_train.py          # train_segmentation, evaluate_segmentation
 │   └── eval/
 │       ├── sliding_window.py     # inferenza su tile intere con finestre sovrapposte
 │       ├── report.py             # report JSON/MD, aggregazione media ± std
-│       ├── visualize.py          # pannelli TOP | GT | pred | errori
-│       └── benchmark.py          # picco VRAM e throughput di una configurazione
+│   │   ├── predict.py            # rsseg predict: immagini qualsiasi o tile di uno split
+│   │   ├── visualize.py          # pannelli TOP | GT | pred | errori
+│   │   └── benchmark.py          # picco VRAM e throughput di una configurazione
+│   └── gui/                      # applicazione rsseg-gui (PySide6), vedi APP_DESKTOP.md
+│       ├── core/                 # job, tempi, GPU, suggerimenti, run (senza Qt)
+│       ├── help_it.yaml          # suggerimenti in italiano di ogni impostazione
+│       └── pages/                # sezioni dell'interfaccia
 ├── scripts/run_thesis_grid.sh    # wrapper di rsseg campaign configs/campaigns/thesis_grid.yaml
-├── tests/                        # 80 test (unit + end-to-end su dati sintetici)
+├── tests/                        # 109 test (unit, end-to-end su dati sintetici, GUI senza display)
 ├── docs/
 └── legacy/                       # materiale originale 2022, invariato
 ```
@@ -242,6 +250,16 @@ I passi vivono in uno **store condiviso** (`runs/campaigns/store/{backbones,runs
 campagne viene addestrato una volta. Uno `spec.json` diverso con lo stesso id blocca la campagna. `--quick` usa uno
 store separato (`runs/campaigns-quick/`).
 
+### 4.7 Pausa, ripresa e applicazione desktop
+Ogni comando segue due file indicati da variabili d'ambiente: `progress.json` (`RSSEG_PROGRESS_FILE`, scritto dal
+comando) e `control.json` (`RSSEG_CONTROL_FILE`, scritto da chi lo ha lanciato). Una richiesta di **pausa** fa
+salvare a `ResumeCheckpoint` un checkpoint di ripresa (`<run>/resume/`) e termina il comando con codice 10;
+`--resume RUN_DIR` lo riprende in modo esatto: il flusso dei dati è indirizzato per posizione (`StreamSampler`,
+ordine e augmentation dipendono solo da seed e posizione) e il checkpoint contiene modello, ottimizzatore, metriche a
+metà epoca, callback e run MLflow. Checkpoint automatici ogni `train.checkpoint_every_min` minuti coprono i crash.
+L'applicazione `rsseg-gui` (`rsseg.gui`) lancia i comandi come processi staccati e li segue con questi file: vedi
+[APP_DESKTOP.md](APP_DESKTOP.md).
+
 ## 5. Configurazione
 
 Le YAML ereditano con `base:` e i valori si sovrascrivono da riga di comando:
@@ -268,7 +286,9 @@ campo è documentato.
 | End-to-end | synth → prepare → train → report → MLflow → pretrain DINO → fine-tuning dal backbone esportato |
 | Campagne | Espansione, errori di definizione, ripresa, passi falliti e bloccati, controlli su dati e disco (runner finto); una campagna reale con 3 sottoprocessi |
 | Checkpoint | `TopKCheckpoint` tiene i k migliori e copia il migliore |
-| CI | GitHub Actions: ruff (lint + format) e pytest su Python 3.11/3.12 con PyTorch CPU |
+| Pausa e ripresa | Training e DINO messi in pausa a metà epoca (e durante la valutazione) e ripresi = run senza interruzioni (pesi, storia, metriche); stop senza checkpoint; campagna in pausa e ripresa; job reale in pausa, app "riavviata", ripresa fino alla fine |
+| GUI | Il core senza Qt non importa torch/keras/Qt; job staccati, coda GPU, job interrotti; tempi e intervalli; parsing GPU; ogni impostazione ha il suggerimento; pagine costruite e usate senza display (`QT_QPA_PLATFORM=offscreen`) |
+| CI | GitHub Actions: ruff (lint + format) e pytest su Python 3.11/3.12 con PyTorch CPU e PySide6 senza display |
 
 ## 7. Licenza
 
