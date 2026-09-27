@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rsseg"
 version = "0.1.0"
-description = "Semantic segmentation of very-high-resolution aerial images (ISPRS Potsdam) with MAResU-Net, vector quantization and DINO pre-training — Keras 3 on PyTorch."
+description = "Semantic segmentation of very-high-resolution aerial images (ISPRS Potsdam and Vaihingen) with MAResU-Net, vector quantization and DINO pre-training — Keras 3 on PyTorch."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
@@ -25,6 +25,7 @@ dependencies = [
     "pillow>=10.0",
     "pyyaml>=6.0",
     "rich>=13.7",
+    "tifffile>=2024.1",
 ]
 
 [project.optional-dependencies]

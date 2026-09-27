@@ -1,0 +1,9 @@
+# ISPRS Vaihingen (33 areas, 9 cm, IR-R-G). Experiment files use it with `base: ../datasets/vaihingen.yaml`.
+#   rsseg prepare -c configs/datasets/vaihingen.yaml [--dry-run]
+base: ../base.yaml
+name: vaihingen
+data:
+  dataset: vaihingen
+  raw_dir: data/download/Vaihingen
+  root: data/vaihingen
+  train_stride: 256        # 14 training areas only: overlapping crops (inside the train split)

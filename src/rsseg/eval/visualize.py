@@ -17,9 +17,10 @@ def error_map(gt: np.ndarray, pred: np.ndarray) -> np.ndarray:
 
 
 def panel(image: np.ndarray, gt: np.ndarray, pred: np.ndarray, gap: int = 4) -> np.ndarray:
-    """One row ``[image | gt | pred | errors]`` as uint8 RGB."""
+    """One row ``[image | gt | pred | errors]`` as uint8 RGB (extra channels such as the nDSM
+    are not shown)."""
     parts = [
-        np.clip(image, 0, 255).astype(np.uint8),
+        np.clip(image[..., :3], 0, 255).astype(np.uint8),
         index_to_rgb(gt),
         index_to_rgb(pred),
         error_map(gt, pred),

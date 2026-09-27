@@ -11,7 +11,8 @@
   Position embeddings are bicubically interpolated to the input grid, so any size that is a
   multiple of 32 works. The encoder is identical to ``torchvision.models.vit_*``.
 
-Input: channels-last RGB in ``[0, 255]``; ImageNet normalisation is the first layer.
+Input: channels-last RGB in ``[0, 255]`` (optionally followed by extra channels such as
+the nDSM); ImageNet normalisation is the first layer.
 """
 
 from __future__ import annotations
@@ -287,18 +288,41 @@ class PatchMerging(layers.Layer):
         return {**super().get_config(), "dim": self.dim}
 
 
-def _normalized_input():
-    inputs = keras.Input((None, None, 3), name="image")
-    x = layers.Normalization(
-        mean=[m * 255.0 for m in IMAGENET_MEAN],
-        variance=[(s * 255.0) ** 2 for s in IMAGENET_STD],
+def input_normalization(
+    in_channels: int = 3,
+    extra_mean: list[float] | None = None,
+    extra_std: list[float] | None = None,
+) -> layers.Normalization:
+    """ImageNet normalisation of the first three channels; channels after the third (e.g. the
+    nDSM) use ``extra_mean``/``extra_std`` (default 127.5 ± 127.5, i.e. ``[0, 255] → [-1, 1]``)."""
+    n_extra = in_channels - 3
+    if n_extra < 0:
+        raise ValueError(f"in_channels must be >= 3, got {in_channels}")
+    extra_mean = list(extra_mean or [127.5] * n_extra)
+    extra_std = list(extra_std or [127.5] * n_extra)
+    if len(extra_mean) != n_extra or len(extra_std) != n_extra:
+        raise ValueError(f"expected {n_extra} extra channel statistics")
+    return layers.Normalization(
+        mean=[m * 255.0 for m in IMAGENET_MEAN] + extra_mean,
+        variance=[(s * 255.0) ** 2 for s in IMAGENET_STD] + [s**2 for s in extra_std],
         name="input_norm",
-    )(inputs)
-    return inputs, x
+    )
 
 
-def build_swin(spec: SwinSpec, drop_path: float = 0.0, name: str = "swin_backbone") -> keras.Model:
-    inputs, x = _normalized_input()
+def _normalized_input(in_channels: int = 3, extra_mean=None, extra_std=None):
+    inputs = keras.Input((None, None, in_channels), name="image")
+    return inputs, input_normalization(in_channels, extra_mean, extra_std)(inputs)
+
+
+def build_swin(
+    spec: SwinSpec,
+    drop_path: float = 0.0,
+    name: str = "swin_backbone",
+    in_channels: int = 3,
+    extra_mean: list[float] | None = None,
+    extra_std: list[float] | None = None,
+) -> keras.Model:
+    inputs, x = _normalized_input(in_channels, extra_mean, extra_std)
     p = spec.patch_size
     x = layers.Conv2D(spec.embed_dim, p, strides=p, name="patch_embed")(x)
     x = _layer_norm("patch_norm", 1e-5)(x)
@@ -425,8 +449,15 @@ class TokensToMap(layers.Layer):
         return (*grid_shape[:3], tokens_shape[-1])
 
 
-def build_vit(spec: ViTSpec, drop_path: float = 0.0, name: str = "vit_backbone") -> keras.Model:
-    inputs, x = _normalized_input()
+def build_vit(
+    spec: ViTSpec,
+    drop_path: float = 0.0,
+    name: str = "vit_backbone",
+    in_channels: int = 3,
+    extra_mean: list[float] | None = None,
+    extra_std: list[float] | None = None,
+) -> keras.Model:
+    inputs, x = _normalized_input(in_channels, extra_mean, extra_std)
     grid = layers.Conv2D(spec.dim, spec.patch_size, strides=spec.patch_size, name="patch_embed")(x)
     x = ViTEmbedding(spec.dim, spec.image_size // spec.patch_size, name="embedding")(grid)
 

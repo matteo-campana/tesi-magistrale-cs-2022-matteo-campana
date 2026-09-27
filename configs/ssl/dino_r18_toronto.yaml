@@ -1,0 +1,8 @@
+# DINO on the Potsdam training crops + unlabelled crops of the Toronto frames (RGB, 15 cm).
+#   rsseg prepare-unlabeled --source toronto --raw data/download/Toronto/Images --out data/unlabeled/toronto
+#   rsseg pretrain -c configs/ssl/dino_r18_toronto.yaml
+base: dino_r18.yaml
+name: dino_r18_toronto
+ssl:
+  extra_pools: [data/unlabeled/toronto]
+  export_path: runs/dino_r18_toronto_backbone.weights.h5

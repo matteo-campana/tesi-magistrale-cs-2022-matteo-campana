@@ -16,15 +16,17 @@ Input: channels-last RGB in ``[0, 255]``; ImageNet normalisation is the first la
 from __future__ import annotations
 
 import keras
+import numpy as np
 from keras import layers
 
 from rsseg.models.transformers import (
-    IMAGENET_MEAN,
-    IMAGENET_STD,
+    IMAGENET_MEAN,  # noqa: F401  (re-exported: preprocessing constants of the encoders)
+    IMAGENET_STD,  # noqa: F401
     SWIN_ARCHS,
     VIT_ARCHS,
     build_swin,
     build_vit,
+    input_normalization,
     swin_feature_channels,
     vit_feature_channels,
 )
@@ -108,18 +110,20 @@ def _bottleneck_block(x, filters: int, stride: int, name: str):
     return layers.ReLU(name=f"{name}_out")(layers.Add(name=f"{name}_add")([y, shortcut]))
 
 
-def build_resnet(arch: str = "resnet18", name: str | None = None) -> keras.Model:
+def build_resnet(
+    arch: str = "resnet18",
+    name: str | None = None,
+    in_channels: int = 3,
+    extra_mean: list[float] | None = None,
+    extra_std: list[float] | None = None,
+) -> keras.Model:
     if arch not in ARCHS:
         raise ValueError(f"unknown arch {arch!r}, expected one of {list(ARCHS)}")
     block_type, depths = ARCHS[arch]
     block = _basic_block if block_type == "basic" else _bottleneck_block
 
-    inputs = keras.Input((None, None, 3), name="image")
-    x = layers.Normalization(
-        mean=[m * 255.0 for m in IMAGENET_MEAN],
-        variance=[(s * 255.0) ** 2 for s in IMAGENET_STD],
-        name="input_norm",
-    )(inputs)
+    inputs = keras.Input((None, None, in_channels), name="image")
+    x = input_normalization(in_channels, extra_mean, extra_std)(inputs)
     x = layers.ReLU(name="relu")(_bn(_conv(x, 64, 7, 2, "conv1"), "bn1"))
     x = layers.ZeroPadding2D(1, name="maxpool_pad")(x)  # safe: inputs are >= 0 after ReLU
     x = layers.MaxPooling2D(3, strides=2, name="maxpool")(x)
@@ -133,22 +137,69 @@ def build_resnet(arch: str = "resnet18", name: str | None = None) -> keras.Model
     return keras.Model(inputs, features, name=name or f"{arch}_backbone")
 
 
+# First layer of each encoder family: the only one whose shape depends on the input channels.
+STEM_LAYERS = ("conv1", "patch_embed")
+EXTRA_CHANNEL_INITS = ("mean", "zeros")
+
+
+def _build_encoder(
+    arch: str, drop_path: float, in_channels: int = 3, extra_mean=None, extra_std=None
+) -> keras.Model:
+    kw = {"in_channels": in_channels, "extra_mean": extra_mean, "extra_std": extra_std}
+    if arch in SWIN_ARCHS:
+        return build_swin(SWIN_ARCHS[arch], drop_path, name=f"{arch}_backbone", **kw)
+    if arch in VIT_ARCHS:
+        return build_vit(VIT_ARCHS[arch], drop_path, name=f"{arch}_backbone", **kw)
+    return build_resnet(arch, **kw)
+
+
+def inflate_input_channels(source: keras.Model, target: keras.Model, init: str = "mean") -> None:
+    """Copy the weights of a 3-channel encoder into the same encoder with more input channels.
+
+    The stem kernel keeps its RGB slice; the slices of the extra channels are the mean of the
+    RGB slices (``mean``) or zero (``zeros``: the network computes exactly what the 3-channel one
+    did, and learns to use the extra channels during fine-tuning). ``input_norm`` keeps the
+    statistics of ``target``.
+    """
+    if init not in EXTRA_CHANNEL_INITS:
+        raise ValueError(f"extra_channel_init must be one of {EXTRA_CHANNEL_INITS}, got {init!r}")
+    for layer in source.layers:
+        if not layer.weights or layer.name == "input_norm":
+            continue
+        weights = layer.get_weights()
+        if layer.name in STEM_LAYERS:
+            kernel = weights[0]  # (kh, kw, 3, out)
+            n_extra = target.get_layer(layer.name).get_weights()[0].shape[2] - kernel.shape[2]
+            if init == "mean":
+                fill = kernel.mean(axis=2, keepdims=True)
+            else:
+                fill = np.zeros_like(kernel[:, :, :1])
+            weights[0] = np.concatenate([kernel] + [fill] * n_extra, axis=2)
+        target.get_layer(layer.name).set_weights(weights)
+
+
 def build_backbone(
-    arch: str = "resnet18", weights: str = "imagenet", drop_path: float = 0.0
+    arch: str = "resnet18",
+    weights: str = "imagenet",
+    drop_path: float = 0.0,
+    in_channels: int = 3,
+    extra_mean: list[float] | None = None,
+    extra_std: list[float] | None = None,
+    extra_channel_init: str = "mean",
 ) -> keras.Model:
     """Build an encoder and load ``weights``: ``imagenet``, ``none`` or a ``.weights.h5`` path.
 
     ``drop_path`` is the maximum stochastic-depth rate of transformer blocks (linearly increasing
-    with depth); it is ignored by ResNets.
+    with depth); it is ignored by ResNets. With ``in_channels > 3`` the weights (always of a
+    3-channel encoder: ImageNet or ``rsseg pretrain``) are loaded first and then inflated by
+    :func:`inflate_input_channels`.
     """
     _check_arch(arch)
-    if arch in SWIN_ARCHS:
-        model = build_swin(SWIN_ARCHS[arch], drop_path, name=f"{arch}_backbone")
-    elif arch in VIT_ARCHS:
-        model = build_vit(VIT_ARCHS[arch], drop_path, name=f"{arch}_backbone")
-    else:
-        model = build_resnet(arch)
-    if weights in (None, "", "none"):
+    no_weights = weights in (None, "", "none")
+    if in_channels != 3 and no_weights:
+        return _build_encoder(arch, drop_path, in_channels, extra_mean, extra_std)
+    model = _build_encoder(arch, drop_path)
+    if no_weights:
         return model
     if weights == "imagenet":
         from rsseg.models.torchvision_weights import load_imagenet_weights
@@ -156,4 +207,8 @@ def build_backbone(
         load_imagenet_weights(model, arch)
     else:
         model.load_weights(weights)
-    return model
+    if in_channels == 3:
+        return model
+    wide = _build_encoder(arch, drop_path, in_channels, extra_mean, extra_std)
+    inflate_input_channels(model, wide, extra_channel_init)
+    return wide

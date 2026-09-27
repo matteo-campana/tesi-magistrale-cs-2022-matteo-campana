@@ -238,6 +238,35 @@ def test_transformer_segmentor_trains(arch):
     np.testing.assert_allclose(_np(model(x[:1])), _np(model(x[:1])), rtol=0, atol=1e-6)
 
 
+@pytest.mark.parametrize("arch", ["resnet18", "swin_t", "vit_s_16"])
+def test_inflated_encoder_with_zero_init_matches_rgb_encoder(arch, tmp_path):
+    """RGB weights (ImageNet or DINO) loaded into a 4-channel encoder: with ``zeros`` the extra
+    channel is ignored, so the features equal those of the 3-channel encoder."""
+    path = str(tmp_path / "bb.weights.h5")
+    build_backbone(arch, "none").save_weights(path)
+    rgb = build_backbone(arch, path)
+    wide = build_backbone(arch, path, in_channels=4, extra_mean=[30.0], extra_std=[40.0],
+                          extra_channel_init="zeros")  # fmt: skip
+    x = np.random.default_rng(0).uniform(0, 255, (1, 64, 64, 4)).astype(np.float32)
+    for a, b in zip(rgb(x[..., :3], training=False), wide(x, training=False), strict=True):
+        np.testing.assert_allclose(_np(a), _np(b), rtol=1e-4, atol=1e-4)
+    stem = "conv1" if arch.startswith("resnet") else "patch_embed"
+    mean_init = build_backbone(arch, path, in_channels=4)
+    k3, k4 = _np(rgb.get_layer(stem).kernel), _np(mean_init.get_layer(stem).kernel)
+    np.testing.assert_allclose(k4[:, :, :3], k3)
+    np.testing.assert_allclose(k4[:, :, 3], k3.mean(axis=2), rtol=1e-5, atol=1e-7)
+
+
+def test_segmentor_with_ndsm_channel():
+    cfg = ModelConfig(weights="none", in_channels=4, extra_channel_mean=[20.0],
+                      extra_channel_std=[30.0])  # fmt: skip
+    model = build_segmentor(cfg)
+    x = np.random.default_rng(0).uniform(0, 255, (1, 64, 64, 4)).astype(np.float32)
+    assert tuple(model(x).shape) == (1, 64, 64, 6)
+    with pytest.raises(ValueError, match="extra channel statistics"):
+        build_segmentor(ModelConfig(weights="none", in_channels=4, extra_channel_mean=[1.0, 2.0]))
+
+
 def test_drop_path_scales_kept_samples():
     layer = DropPath(0.5, seed=0)
     out = _np(layer(np.ones((64, 3, 3, 2), np.float32), training=True))

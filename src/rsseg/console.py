@@ -160,20 +160,23 @@ def config_panel(cfg, command: str) -> Panel:
         s = cfg.ssl
         rows |= {
             "backbone": f"{s.arch} ({s.weights})",
+            "data": ", ".join([cfg.data.root, *s.extra_pools]),
             "epochs × batch": f"{s.epochs} × {s.batch_size}",
             "crops": f"2×{s.global_crop_size}² + {s.local_crops_number}×{s.local_crop_size}²",
             "precision": s.precision,
         }
     elif command == "prepare":
         d = cfg.data
-        rows |= {"raw_dir": d.raw_dir, "root": d.root, "protocol": d.protocol,
-                 "crop / stride": f"{d.crop_size} / {d.train_stride}"}  # fmt: skip
+        rows |= {"dataset": d.dataset, "raw_dir": d.raw_dir, "root": d.root,
+                 "protocol": d.protocol, "crop / stride": f"{d.crop_size} / {d.train_stride}",
+                 "labels (train)": d.train_labels,
+                 "nDSM": (d.ndsm_source + ("" if d.ndsm_source == "computed" else f" ({d.ndsm_variant})")) if d.ndsm else "no"}  # fmt: skip
     else:
         m, t = cfg.model, cfg.train
         rows |= {
             "backbone": f"{m.arch} ({m.weights})",
             "skip / neck": f"{m.skip} / {m.neck}",
-            "data": cfg.data.root,
+            "data": f"{cfg.data.root} ({cfg.data.dataset}{', + nDSM' if cfg.data.ndsm else ''})",
         }
         if command in ("train", "benchmark"):
             rows |= {

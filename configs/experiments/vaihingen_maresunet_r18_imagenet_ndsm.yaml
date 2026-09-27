@@ -1,0 +1,6 @@
+# RGB + nDSM on Vaihingen: the nDSM is computed from the DSM (morphological ground estimate).
+base: vaihingen_maresunet_r18_imagenet.yaml
+name: vaihingen_maresunet_r18_imagenet_ndsm
+data:
+  ndsm: true
+  ndsm_source: computed

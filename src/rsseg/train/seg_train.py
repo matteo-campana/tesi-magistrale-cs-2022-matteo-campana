@@ -14,9 +14,9 @@ import keras
 import mlflow
 import numpy as np
 
-from rsseg.config import ExperimentConfig, TrainConfig
+from rsseg.config import ExperimentConfig, ModelConfig, TrainConfig
 from rsseg.data.datasets import segmentation_loaders
-from rsseg.eval.report import evaluate_tiles, write_report
+from rsseg.eval.report import evaluate_tiles, report_metrics, write_report
 from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.models.segmentor import build_segmentor
 from rsseg.runtime import setup_runtime
@@ -33,6 +33,28 @@ def make_run_dir(cfg: ExperimentConfig, kind: str) -> Path:
     path = Path(cfg.output_dir) / f"{kind}-{cfg.name}-{stamp}"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def model_config(cfg: ExperimentConfig, require_stats: bool = True) -> ModelConfig:
+    """``cfg.model`` with the input channels implied by ``cfg.data``: with ``data.ndsm`` the
+    model takes 4 channels and normalises the nDSM with the training statistics of ``stats.json``.
+    """
+    m = cfg.model
+    if not cfg.data.ndsm:
+        if m.in_channels != 3:
+            raise ValueError("model.in_channels > 3 requires data.ndsm=true")
+        return m
+    mean, std = m.extra_channel_mean, m.extra_channel_std
+    stats_path = Path(cfg.data.root) / "stats.json"
+    if (mean is None or std is None) and stats_path.exists():
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        if "ndsm_mean" in stats:
+            mean, std = [stats["ndsm_mean"]], [stats["ndsm_std"]]
+    if (mean is None or std is None) and require_stats:
+        raise FileNotFoundError(
+            f"no nDSM statistics in {stats_path}: run `rsseg prepare` with data.ndsm=true"
+        )
+    return dataclasses.replace(m, in_channels=4, extra_channel_mean=mean, extra_channel_std=std)
 
 
 def lr_at_epoch(cfg: TrainConfig, epoch: int) -> float:
@@ -65,6 +87,7 @@ def make_optimizer(cfg: TrainConfig) -> keras.optimizers.Optimizer:
 
 
 def train_segmentation(cfg: ExperimentConfig) -> dict:
+    cfg = dataclasses.replace(cfg, model=model_config(cfg))  # recorded in the run config
     precision = setup_runtime(cfg.train.precision, cfg.train.seed)
     run_dir = make_run_dir(cfg, "seg")
     train_loader, val_loader = segmentation_loaders(cfg.data, cfg.train.batch_size, cfg.train.seed)
@@ -139,20 +162,14 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
             report = evaluate_tiles(model, cfg.data.root, cfg.eval, out_dir=run_dir)
             report["name"] = cfg.name
             json_path, md_path = write_report(report, run_dir, f"{cfg.name} — {cfg.eval.split}")
-            for key, section in (("", "all_classes"), ("_no_clutter", "without_clutter")):
-                s = report[section]
-                mlflow.log_metrics(
-                    {
-                        f"{cfg.eval.split}_oa{key}": s["oa"],
-                        f"{cfg.eval.split}_mf1{key}": s["mf1"],
-                        f"{cfg.eval.split}_miou{key}": s["miou"],
-                    }
-                )
+            mlflow.log_metrics(report_metrics(report, cfg.eval.split))
             mlflow.log_artifact(str(json_path), artifact_path="evaluation")
             mlflow.log_artifact(str(md_path), artifact_path="evaluation")
             if (run_dir / "predictions").exists():
                 mlflow.log_artifacts(str(run_dir / "predictions"), artifact_path="predictions")
             result["test"] = report["all_classes"]
+            if "eroded" in report:
+                result["test_eroded"] = report["eroded"]["all_classes"]
         (run_dir / "result.json").write_text(
             json.dumps(result, indent=2, default=str), encoding="utf-8"
         )
@@ -167,6 +184,7 @@ def _summary(model: keras.Model) -> str:
 
 def evaluate_segmentation(cfg: ExperimentConfig, weights: str) -> dict:
     """Evaluate saved weights on whole tiles of ``cfg.eval.split`` and log the report to MLflow."""
+    cfg = dataclasses.replace(cfg, model=model_config(cfg))
     setup_runtime(cfg.train.precision, cfg.train.seed)
     run_dir = make_run_dir(cfg, "eval")
     # The encoder weights come from the checkpoint: skip downloading ImageNet weights.
@@ -177,11 +195,12 @@ def evaluate_segmentation(cfg: ExperimentConfig, weights: str) -> dict:
         report = evaluate_tiles(model, cfg.data.root, cfg.eval, out_dir=run_dir)
         report["name"] = cfg.name
         json_path, md_path = write_report(report, run_dir, f"{cfg.name} — {cfg.eval.split}")
-        s = report["all_classes"]
-        mlflow.log_metrics({f"{cfg.eval.split}_oa": s["oa"], f"{cfg.eval.split}_mf1": s["mf1"], f"{cfg.eval.split}_miou": s["miou"],
-                            f"{cfg.eval.split}_miou_no_clutter": report["without_clutter"]["miou"]})  # fmt: skip
+        mlflow.log_metrics(report_metrics(report, cfg.eval.split))
         mlflow.log_artifact(str(json_path), artifact_path="evaluation")
         mlflow.log_artifact(str(md_path), artifact_path="evaluation")
         if (run_dir / "predictions").exists():
             mlflow.log_artifacts(str(run_dir / "predictions"), artifact_path="predictions")
-    return {"run_id": run.info.run_id, "run_dir": str(run_dir), **report["all_classes"]}
+    result = {"run_id": run.info.run_id, "run_dir": str(run_dir), **report["all_classes"]}
+    if "eroded" in report:
+        result["eroded"] = report["eroded"]["all_classes"]
+    return result

@@ -5,6 +5,8 @@
 
     rsseg synth     --out data/synthetic_raw               # fake tiles to try the pipeline
     rsseg prepare   -c CONFIG [--set data.raw_dir=...]     # tiles -> crops + manifests
+    rsseg prepare   -c CONFIG --dry-run                    # files, splits and anomalies per tile
+    rsseg prepare-unlabeled --source toronto --raw DIR --out DIR   # DINO pool from raw frames
     rsseg train     -c CONFIG [--set k=v ...]              # supervised training (+ test evaluation)
     rsseg pretrain  -c CONFIG                              # DINO pre-training of the encoder
     rsseg evaluate  -c CONFIG --weights best.weights.h5    # whole-tile evaluation
@@ -68,8 +70,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--size", type=int, default=512)
     p.add_argument("--seed", type=int, default=0)
 
+    p = add("prepare", help="tile the raw dataset into crops and manifests")
+    _add_config_args(p)
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only list the files chosen for every tile, the split and the anomalies",
+    )
+
+    p = add("prepare-unlabeled", help="cut unlabelled crops from raw aerial frames (DINO pool)")
+    p.add_argument("--source", required=True, choices=["toronto", "vaihingen_frames"])
+    p.add_argument("--raw", required=True, help="directory with the frames (e.g. .../Images)")
+    p.add_argument("--out", required=True, help="output root, then listed in ssl.extra_pools")
+    p.add_argument("--crop", type=int, default=512)
+    p.add_argument("--max-per-frame", type=int, default=0, help="0 = every crop")
+    p.add_argument("--seed", type=int, default=0)
+
     for name, help_ in (
-        ("prepare", "tile the raw dataset into crops and manifests"),
         ("train", "train a segmentation model"),
         ("pretrain", "DINO self-supervised pre-training of the encoder"),
     ):
@@ -123,6 +140,22 @@ def backbones_table(with_params: bool = False):
     return table
 
 
+def inspection_table(result: dict):
+    from rich.table import Table
+
+    table = Table(
+        title=f"{result['dataset']} — {result['raw_dir']}", title_style="title",
+        header_style="bold",
+    )  # fmt: skip
+    for col in ("tile", "split", "size", "label", "eroded", "ndsm", "off-palette", "notes"):
+        table.add_column(col, style="key" if col == "tile" else None)
+    for r in result["tiles"]:
+        notes = f"[red]{r['notes']}[/]" if "ERROR" in r["notes"] else r["notes"]
+        table.add_row(r["tile"], r["split"], r["size"], r["label"], r["eroded"], r["ndsm"],
+                      f"{r['off_palette']:.3%}", notes)  # fmt: skip
+    return table
+
+
 def _print_result(result, title: str, as_json: bool) -> None:
     if as_json:
         print(json.dumps(result, indent=2, default=str))
@@ -140,6 +173,15 @@ def main(argv: list[str] | None = None) -> int:
         with err_console.status("generating synthetic tiles…"):
             out = make_synthetic_potsdam(args.out, size=args.size, seed=args.seed)
         console.print(f"[metric]✓[/] synthetic tiles written to [key]{out}[/]")
+        return 0
+
+    if args.command == "prepare-unlabeled":
+        from rsseg.data.unlabeled import prepare_unlabeled
+
+        result = prepare_unlabeled(
+            args.source, args.raw, args.out, args.crop, args.max_per_frame, seed=args.seed
+        )
+        _print_result(result, f"rsseg prepare-unlabeled — {args.source}", args.json)
         return 0
 
     if args.command == "backbones":
@@ -168,6 +210,19 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config, args.set)
     if not args.json:
         err_console.print(config_panel(cfg, args.command))
+    if args.command == "prepare" and args.dry_run:
+        from rsseg.data.prepare import inspect_dataset
+
+        result = inspect_dataset(cfg.data)
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            console.print(inspection_table(result))
+            console.print(
+                f"tiles found: {result['tiles_found']} — not in any split: "
+                f"{result['unused_tiles'] or 'none'} — errors: {result['errors']}"
+            )
+        return 1 if result["errors"] else 0
     if args.command == "prepare":
         from rsseg.data.prepare import prepare_dataset
 

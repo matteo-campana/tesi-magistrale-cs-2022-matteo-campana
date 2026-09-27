@@ -16,6 +16,7 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 | F4 Pre-training DINO | ✅ | 🟡 |
 | F5 Griglia + ablation | ✅ script | ⬜ |
 | F6 Report e rilascio | ⬜ | ⬜ |
+| F7 Vaihingen, nDSM, pool DINO | ✅ | 🟡 |
 
 ---
 
@@ -33,7 +34,10 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 - ✅ `prepare.py`: split per tile → tiling → manifest con istogrammi; statistiche solo sul train
 - ✅ `CropDataset`, `MultiCropDataset`, augmentation congiunte, `label_fraction` per tile
 - ✅ Generatore di tile sintetiche (`rsseg synth`) per test e demo
-- 🟡 Verificare lo split `standard` sulle fonti ufficiali ISPRS/MMSegmentation
+- ✅ Split `standard` verificato: le 24 tile di train coincidono con `5_Labels_for_participants`
+- ✅ Dati reali in `data/download/`: sorgenti esplicite con priorità delle etichette (`sources.py`), rifiuto delle
+  etichette corrotte (Potsdam 4_12 e 6_7 in `5_Labels_all`), pad di DSM/nDSM di 3_13, `rsseg prepare --dry-run`
+- ✅ Maschere eroded per val/test e report "full + eroded", con definizioni allineate al tool ufficiale ISPRS
 - ⬜ EDA: distribuzione delle classi per tile e split (per documentare perché la tesi aveva rimosso 10 aree)
 
 ## Fase 2: Baseline MAResU-Net (RQ1)
@@ -69,6 +73,16 @@ Legenda: ✅ fatto e verificato (test/CI) · 🟡 implementato, da eseguire su d
 - ✅ `scripts/run_thesis_grid.sh` (2 × 2 × 2 × seed) e `rsseg report` (media ± std)
 - ⬜ Esecuzione della griglia; ablation LAM/plain, augmentation, CE pesata, `aerial_augment`
 - ⬜ Profilo di efficienza con `rsseg benchmark` (parametri, immagini/s, VRAM) per R18/R34/R50
+
+## Fase 7: Vaihingen, nDSM e pool non etichettati
+- ✅ Vaihingen come secondo benchmark: split 16/17 (val 11, 30), config `configs/datasets/vaihingen.yaml`,
+  `configs/experiments/vaihingen_*`
+- ✅ nDSM come 4° canale (RQ6): nDSM ufficiale di Potsdam o calcolato dal DSM (`rsseg.data.ndsm`), crop sidecar,
+  statistiche sul train, estensione del primo layer degli encoder (`mean`/`zeros`)
+- ✅ `rsseg prepare-unlabeled` (Toronto, frame di Vaihingen a 16 bit), `ssl.extra_pools` e guardia anti-leakage
+  per città
+- 🟡 Esperimenti: RGB vs RGB+nDSM su Potsdam e Vaihingen; nDSM ufficiale vs calcolato; DINO con e senza pool
+- ⬜ Cross-dataset: Potsdam IRRG → Vaihingen (stesso falso colore)
 
 ## Fase 6: Documentazione e rilascio
 - ⬜ `docs/RISULTATI.md`: confronto tesi 2022 vs reimplementazione, risposta a ciascuna RQ

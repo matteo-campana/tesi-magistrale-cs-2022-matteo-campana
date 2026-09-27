@@ -18,17 +18,31 @@ import yaml
 
 @dataclass
 class DataConfig:
+    dataset: str = "potsdam"
+    """``potsdam`` or ``vaihingen``: file layout (:mod:`rsseg.data.sources`) and splits."""
     raw_dir: str | None = None
-    """Directory with the original ISPRS Potsdam tiles (searched recursively)."""
+    """Directory with the original ISPRS files (searched recursively)."""
     root: str = "data/potsdam"
     """Output directory of ``rsseg prepare`` (crops, tile masks, manifests)."""
     protocol: str = "standard"
-    """``standard`` (literature split) or ``thesis2022`` (split used in the thesis)."""
+    """``standard`` (literature split) or ``thesis2022`` (split used in the thesis, Potsdam only)."""
     val_tiles: list[str] | None = None
     """Override the validation tiles (held out entirely from the training tiles)."""
     exclude_7_10: bool = False
-    image_pattern: str = r"potsdam_(\d+_\d+)_RGB\.tif$"
-    label_pattern: str = r"potsdam_(\d+_\d+)_label\.tif$"
+    image_pattern: str | None = None
+    """Override the image regex of the dataset source (e.g. ``_IRRG\\.tif$`` for Potsdam IRRG)."""
+    label_pattern: str | None = None
+    """Override the label regex (and its priority list) of the dataset source."""
+    train_labels: str = "full"
+    """Labels of the training/validation crops: ``full`` (thesis) or ``eroded`` (no boundaries)."""
+    max_offpalette: float = 0.005
+    """Maximum fraction of label pixels outside the ISPRS palette before a tile is rejected."""
+    ndsm: bool = False
+    """Add the normalised DSM (height above ground) as a 4th input channel."""
+    ndsm_source: str = "auto"
+    """``official`` (Potsdam nDSM JPGs), ``computed`` (from the DSM) or ``auto`` (official if any)."""
+    ndsm_variant: str = "lastools"
+    """Official Potsdam nDSM variant: ``lastools`` or ``ownapproach``."""
     crop_size: int = 512
     train_stride: int = 512
     """Stride of training crops. Overlap is allowed only inside the training split."""
@@ -71,6 +85,14 @@ class ModelConfig:
     vq: VQConfig = field(default_factory=VQConfig)
     num_classes: int = 6
     dropout: float = 0.1
+    in_channels: int = 3
+    """Input channels: 3 (RGB/IRRG) or 4 (+ nDSM). Set automatically from ``data.ndsm``."""
+    extra_channel_mean: list[float] | None = None
+    """Normalisation of the channels after the first three (default: ``stats.json`` of the data)."""
+    extra_channel_std: list[float] | None = None
+    extra_channel_init: str = "mean"
+    """First-layer weights of the extra channels when inflating a 3-channel encoder:
+    ``mean`` (mean of the RGB kernels) or ``zeros`` (the pre-trained network is unchanged)."""
 
 
 @dataclass
@@ -145,6 +167,10 @@ class SSLConfig:
     steps_per_epoch: int | None = None
     export_path: str | None = None
     """Where to save the student backbone (default: ``<run dir>/backbone.weights.h5``)."""
+    extra_pools: list[str] = field(default_factory=list)
+    """Unlabelled crop roots made by ``rsseg prepare-unlabeled``, added to the training crops."""
+    allow_same_city_pool: bool = False
+    """Allow a pool from the city of ``data.dataset``: its images may cover the test areas."""
 
 
 @dataclass

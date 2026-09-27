@@ -1,0 +1,8 @@
+# U-Net-like baseline (no LAM) on Vaihingen, for RQ1 on the second dataset.
+base: ../datasets/vaihingen.yaml
+name: vaihingen_unet_r18_imagenet
+model:
+  arch: resnet18
+  weights: imagenet
+  skip: plain
+  neck: identity

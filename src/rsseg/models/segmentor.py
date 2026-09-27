@@ -74,10 +74,13 @@ def build_segmentor(
     if cfg.neck not in ("identity", "vq"):
         raise ValueError(f"model.neck must be 'identity' or 'vq', got {cfg.neck!r}")
 
-    backbone = backbone or build_backbone(cfg.arch, cfg.weights, cfg.drop_path)
+    backbone = backbone or build_backbone(
+        cfg.arch, cfg.weights, cfg.drop_path, cfg.in_channels, cfg.extra_channel_mean,
+        cfg.extra_channel_std, cfg.extra_channel_init,
+    )  # fmt: skip
     filters = feature_channels(cfg.arch)
 
-    inputs = keras.Input((None, None, 3), name="image")
+    inputs = keras.Input((None, None, cfg.in_channels), name="image")
     c1, c2, c3, c4 = backbone(inputs)
 
     def skip(x, level: int):

@@ -10,13 +10,13 @@ import torch  # noqa: E402
 
 import rsseg  # noqa: E402,F401
 
-# Reference checks use float32 tolerances; TF32 convs on Ampere+ GPUs are ~1e-3 accurate.
-torch.backends.cudnn.allow_tf32 = False
-torch.backends.cuda.matmul.allow_tf32 = False
-
 
 @pytest.fixture(autouse=True)
 def float32_policy():
+    # Reference checks use float32 tolerances; TF32 convs on Ampere+ GPUs are ~1e-3 accurate.
+    # Reset before every test: training runs call setup_runtime(), which enables TF32 globally.
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cuda.matmul.allow_tf32 = False
     keras.config.set_dtype_policy("float32")
     keras.utils.set_random_seed(0)
     yield

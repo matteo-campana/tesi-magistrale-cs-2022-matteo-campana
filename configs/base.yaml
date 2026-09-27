@@ -4,7 +4,8 @@ name: base
 output_dir: runs
 
 data:
-  raw_dir: null            # e.g. /data/ISPRS/Potsdam  (needed only by `rsseg prepare`)
+  dataset: potsdam         # potsdam | vaihingen
+  raw_dir: data/download/Potsdam   # ISPRS files as downloaded (needed only by `rsseg prepare`)
   root: data/potsdam       # output of `rsseg prepare`
   protocol: standard       # standard | thesis2022
   crop_size: 512

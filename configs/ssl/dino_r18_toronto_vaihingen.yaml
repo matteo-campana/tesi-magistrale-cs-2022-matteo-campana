@@ -1,0 +1,8 @@
+# DINO on Potsdam train crops + Toronto (RGB) + Vaihingen frames (colour-infrared, 8 cm).
+# Valid for Potsdam experiments only: the Vaihingen frames cover the Vaihingen test areas.
+#   rsseg prepare-unlabeled --source vaihingen_frames --raw data/download/Vaihingen/Images --out data/unlabeled/vaihingen_frames
+base: dino_r18.yaml
+name: dino_r18_toronto_vaihingen
+ssl:
+  extra_pools: [data/unlabeled/toronto, data/unlabeled/vaihingen_frames]
+  export_path: runs/dino_r18_toronto_vaihingen_backbone.weights.h5

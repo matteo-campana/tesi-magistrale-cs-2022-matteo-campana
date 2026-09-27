@@ -33,6 +33,17 @@ def read_tiles(root: str | Path, split: str) -> list[dict]:
     return [r for r in read_csv(Path(root) / "tiles.csv") if r["split"] == split]
 
 
+def load_image(path: str | Path, ndsm_path: str | Path | None = None) -> np.ndarray:
+    """``(H, W, 3)`` uint8 image, or ``(H, W, 4)`` with the nDSM as last channel."""
+    with Image.open(path) as im:
+        image = np.asarray(im.convert("RGB"))
+    if ndsm_path is None:
+        return image
+    with Image.open(ndsm_path) as im:
+        ndsm = np.asarray(im)
+    return np.concatenate([image, ndsm[..., None]], axis=-1)
+
+
 def subsample_per_tile(rows: list[dict], fraction: float, seed: int = 0) -> list[dict]:
     """Keep ``fraction`` of the crops of each tile (at least one), deterministically."""
     if not 0 < fraction <= 1:
@@ -51,20 +62,33 @@ def subsample_per_tile(rows: list[dict], fraction: float, seed: int = 0) -> list
 
 
 class CropDataset(Dataset):
-    """Pre-computed crops for supervised training/validation."""
+    """Pre-computed crops for supervised training/validation.
 
-    def __init__(self, root: str | Path, rows: list[dict], augment: JointAugment | None = None):
+    With ``ndsm=True`` the nDSM crop (decimetres, ``uint8``) is appended as a 4th channel.
+    """
+
+    def __init__(
+        self,
+        root: str | Path,
+        rows: list[dict],
+        augment: JointAugment | None = None,
+        ndsm: bool = False,
+    ):
         self.root = Path(root)
         self.rows = rows
         self.augment = augment
+        self.ndsm = ndsm
+        if ndsm and not all(r.get("ndsm") for r in rows):
+            raise FileNotFoundError(
+                f"crops in {root} have no nDSM: run `rsseg prepare` with data.ndsm=true"
+            )
 
     def __len__(self) -> int:
         return len(self.rows)
 
     def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
         row = self.rows[idx]
-        with Image.open(self.root / row["image"]) as im:
-            image = np.asarray(im.convert("RGB"))
+        image = load_image(self.root / row["image"], self.root / row["ndsm"] if self.ndsm else None)
         with Image.open(self.root / row["mask"]) as im:
             mask = np.asarray(im)
         if self.augment is not None:
@@ -119,9 +143,9 @@ def segmentation_loaders(
     train_rows = subsample_per_tile(read_crops(cfg.root, "train"), cfg.label_fraction, seed)
     val_rows = read_crops(cfg.root, "val")
     train_ds = CropDataset(
-        cfg.root, train_rows, JointAugment(cfg.crop_size) if cfg.augment else None
+        cfg.root, train_rows, JointAugment(cfg.crop_size) if cfg.augment else None, cfg.ndsm
     )
-    val_ds = CropDataset(cfg.root, val_rows, None)
+    val_ds = CropDataset(cfg.root, val_rows, None, cfg.ndsm)
     return (
         make_loader(
             train_ds, batch_size, shuffle=True, num_workers=cfg.num_workers, drop_last=True

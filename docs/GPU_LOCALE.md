@@ -79,7 +79,7 @@ per lasciare margine al contesto CUDA e alla frammentazione.
 
 ```bash
 # scarica ISPRS Potsdam (2_Ortho_RGB e 5_Labels_all) accettando le condizioni ISPRS
-rsseg prepare -c configs/base.yaml --set data.raw_dir=/percorso/Potsdam
+rsseg prepare -c configs/base.yaml   # dati in data/download/Potsdam (vedi DATASET.md)
 ```
 
 `prepare` usa `data.prepare_workers` processi. Ogni processo usa circa 1 GB di RAM per convertire una tile 6000²: con 16 GB di RAM tieni `prepare_workers` ≤ 4.

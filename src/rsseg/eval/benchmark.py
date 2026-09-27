@@ -36,16 +36,17 @@ def benchmark(cfg: ExperimentConfig, mode: str = "seg", steps: int = 10, warmup:
     if mode == "seg":
         from rsseg.models.segmentor import build_segmentor
         from rsseg.train.losses import MaskedSparseCrossEntropy
-        from rsseg.train.seg_train import make_optimizer
+        from rsseg.train.seg_train import make_optimizer, model_config
 
         precision = setup_runtime(cfg.train.precision, cfg.train.seed)
         b, s = cfg.train.batch_size, cfg.data.crop_size
-        model = build_segmentor(cfg.model)
+        mcfg = model_config(cfg, require_stats=False)
+        model = build_segmentor(mcfg)
         model.compile(
             optimizer=make_optimizer(cfg.train),
             loss=MaskedSparseCrossEntropy(cfg.model.num_classes),
         )
-        x = rng.uniform(0, 255, (b, s, s, 3)).astype(np.float32)
+        x = rng.uniform(0, 255, (b, s, s, mcfg.in_channels)).astype(np.float32)
         y = rng.integers(0, cfg.model.num_classes, (b, s, s)).astype(np.int64)
 
         def step():

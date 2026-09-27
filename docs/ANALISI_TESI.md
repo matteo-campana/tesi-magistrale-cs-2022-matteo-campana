@@ -200,6 +200,14 @@ pulito e riproducibile:
 - **RQ5.** Quali sono i trade-off accuratezza/costo (parametri, FLOPs, latenza) tra R18, R34 e R50?
   Riprende la motivazione energetica delle conclusioni.
 
+Estensioni aggiunte nella reimplementazione (non presenti nella tesi):
+
+- **RQ6.** L'altezza sul terreno (nDSM) come 4° canale di input ("early fusion") migliora la segmentazione,
+  in particolare per building vs impervious surfaces e tree vs low vegetation? Il risultato cambia se l'nDSM
+  è quello ufficiale o quello stimato dal DSM?
+- Ogni RQ viene verificata anche su **Vaihingen** (secondo benchmark), e la RQ3 anche con pool non etichettati
+  di altre città (Toronto, frame di Vaihingen). Dettagli in [DATASET.md](DATASET.md).
+
 ## 8. Bibliografia essenziale
 
 - Marsocci, Scardapane, Komodakis. *MARE: Self-Supervised Multi-Attention REsu-Net for Semantic Segmentation

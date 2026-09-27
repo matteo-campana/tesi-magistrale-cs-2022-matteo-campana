@@ -41,7 +41,7 @@ def predict_tile(
     batch_size: int = 8,
     tta: bool = False,
 ) -> np.ndarray:
-    """Return the ``(H, W)`` argmax prediction for an ``(H, W, 3)`` uint8 image."""
+    """Return the ``(H, W)`` argmax prediction for an ``(H, W, C)`` image (RGB, or RGB + nDSM)."""
     if window % 32:
         raise ValueError("window must be a multiple of 32")
     h, w = image.shape[:2]

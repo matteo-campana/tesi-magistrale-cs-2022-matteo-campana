@@ -4,7 +4,7 @@
 #   bash scripts/run_thesis_grid.sh            # 3 seeds
 #   SEEDS="0" bash scripts/run_thesis_grid.sh  # single seed
 #
-# Prerequisites: `rsseg prepare -c configs/base.yaml --set data.raw_dir=/path/to/Potsdam`.
+# Prerequisites: `rsseg prepare -c configs/base.yaml` (raw files in data/download/Potsdam).
 # Results: MLflow (`mlflow ui --backend-store-uri sqlite:///mlflow.db`) and runs/*/report.json.
 set -euo pipefail
 SEEDS=${SEEDS:-"0 1 2"}

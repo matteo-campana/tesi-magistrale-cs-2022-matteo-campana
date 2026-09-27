@@ -1,0 +1,12 @@
+# RGB + nDSM (RQ6): the official Potsdam nDSM (lastools) is the 4th input channel. The same
+# data root serves RGB runs: prepare once with the nDSM,
+#   rsseg prepare -c configs/experiments/maresunet_r18_imagenet_ndsm.yaml
+# and compare with maresunet_r18_imagenet.
+base: maresunet_r18_imagenet.yaml
+name: maresunet_r18_imagenet_ndsm
+data:
+  ndsm: true
+  ndsm_source: auto        # official for Potsdam; `computed` for the ablation on the nDSM source
+  ndsm_variant: lastools
+model:
+  extra_channel_init: mean

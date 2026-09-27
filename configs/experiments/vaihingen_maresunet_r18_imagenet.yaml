@@ -1,0 +1,8 @@
+# MAResU-Net on Vaihingen. The main metric is mIoU without clutter (almost absent in Vaihingen).
+base: ../datasets/vaihingen.yaml
+name: vaihingen_maresunet_r18_imagenet
+model:
+  arch: resnet18
+  weights: imagenet
+  skip: lam
+  neck: identity

@@ -8,13 +8,14 @@ Dr. Simone Scardapane e Dr. Valerio Marsocci.
 **Keras 3 su backend PyTorch · tracking con MLflow · eseguibile su una singola GPU NVIDIA RTX 4060 (8 GB).**
 
 > **Stato:** il codice è completo per tutte le parti della tesi (MAResU-Net, VQ, DINO, valutazione) ed è verificato
-> da 44 test automatici su CPU e da run end-to-end su dati sintetici. Gli esperimenti sul dataset Potsdam reale sono
+> da 59 test automatici su CPU e da run end-to-end su dati sintetici. Gli esperimenti sui dataset reali sono
 > il prossimo passo: vedi il [piano](docs/PIANO_DI_SVILUPPO.md).
 
 ## Di cosa si tratta
 
 Segmentazione semantica di ortofoto aeree ad altissima risoluzione (ISPRS **Potsdam**, 5 cm/pixel, 6 classi:
-superfici impermeabili, edifici, vegetazione bassa, alberi, auto, clutter).
+superfici impermeabili, edifici, vegetazione bassa, alberi, auto, clutter). **Vaihingen** (9 cm) è il secondo
+benchmark; l'altezza sul terreno (nDSM) è disponibile come 4° canale di input.
 
 La tesi parte dall'architettura **MAResU-Net** (ResNet + U-Net + *Linear Attention Mechanism* a costo O(N)),
 usata dal lavoro [MARE](https://www.mdpi.com/2072-4292/13/16/3275) dei correlatori, e studia due estensioni:
@@ -46,13 +47,20 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db     # http://127.0.0.1:5000
 Con il dataset reale (va scaricato da ISPRS, vedi [docs/DATASET.md](docs/DATASET.md)):
 
 ```bash
-rsseg prepare   -c configs/base.yaml --set data.raw_dir=/percorso/Potsdam
+rsseg prepare   -c configs/base.yaml --dry-run      # controlla file, split e anomalie
+rsseg prepare   -c configs/base.yaml                # raw_dir predefinito: data/download/Potsdam
 rsseg benchmark -c configs/experiments/maresunet_r18_imagenet.yaml   # entra in 8 GB? misura il picco di VRAM
 rsseg train     -c configs/experiments/maresunet_r18_imagenet.yaml   # training + valutazione su tile di test
 rsseg pretrain  -c configs/ssl/dino_r18.yaml                         # DINO sull'encoder
 rsseg train     -c configs/experiments/maresunet_r18_dino.yaml       # fine-tuning dal backbone DINO
 rsseg train     -c configs/experiments/maresunet_swin_t_imagenet.yaml # encoder Swin-T (Vision Transformer)
 bash scripts/run_thesis_grid.sh                                      # griglia 2×2×2 della tesi × 3 seed
+
+# Vaihingen, nDSM e pool non etichettati per DINO
+rsseg prepare -c configs/experiments/vaihingen_maresunet_r18_imagenet_ndsm.yaml   # data/download/Vaihingen
+rsseg train   -c configs/experiments/maresunet_r18_imagenet_ndsm.yaml             # RGB + nDSM su Potsdam
+rsseg prepare-unlabeled --source toronto --raw data/download/Toronto/Images --out data/unlabeled/toronto
+rsseg pretrain -c configs/ssl/dino_r18_toronto.yaml                              # DINO con il pool di Toronto
 ```
 
 Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni): [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md).
@@ -62,7 +70,8 @@ Guida completa per la RTX 4060 (installazione, memoria, MLflow, problemi comuni)
 | Comando | Cosa fa |
 |---|---|
 | `rsseg synth` | Genera tile sintetiche con gli stessi nomi di file di Potsdam |
-| `rsseg prepare` | Split per tile, conversione delle etichette, crop, manifest, statistiche |
+| `rsseg prepare` | Split per tile, conversione e controllo delle etichette, crop, nDSM, manifest, statistiche (`--dry-run`: solo verifica) |
+| `rsseg prepare-unlabeled` | Crop non etichettati dai frame aerei grezzi (Toronto, Vaihingen) per DINO |
 | `rsseg train` | Training con Keras `fit` + valutazione su tile intere + log su MLflow |
 | `rsseg pretrain` | Pre-training DINO dell'encoder ed export del backbone |
 | `rsseg evaluate` | Valuta un file di pesi su tile intere (finestra scorrevole) |
@@ -97,7 +106,7 @@ risultati su stdout; con `--json` (prima o dopo il sotto-comando) si ottiene il 
 | [docs/ANALISI_TESI.md](docs/ANALISI_TESI.md) | Contenuto della tesi, motivazioni delle scelte, risultati, lettura critica, domande di ricerca |
 | [docs/REVISIONE_CODICE_ORIGINALE.md](docs/REVISIONE_CODICE_ORIGINALE.md) | Ricognizione del codice 2022 e difetti trovati |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architettura del pacchetto `rsseg` |
-| [docs/DATASET.md](docs/DATASET.md) | ISPRS Potsdam, classi, split, pre-processing, augmentation |
+| [docs/DATASET.md](docs/DATASET.md) | ISPRS Potsdam e Vaihingen, problemi noti dei file, split, nDSM, etichette eroded, pool DINO |
 | [docs/GPU_LOCALE.md](docs/GPU_LOCALE.md) | Esecuzione su RTX 4060 8 GB e uso di MLflow |
 | [docs/PIANO_DI_SVILUPPO.md](docs/PIANO_DI_SVILUPPO.md) | Stato delle fasi, esperimenti da eseguire, rischi |
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 import keras
 import mlflow
@@ -12,7 +13,9 @@ import numpy as np
 
 from rsseg.config import ExperimentConfig
 from rsseg.data.datasets import MultiCropDataset, make_loader, read_crops
+from rsseg.data.sources import get_source
 from rsseg.data.transforms import MultiCropAugment
+from rsseg.data.unlabeled import read_pool_meta
 from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.runtime import setup_runtime
 from rsseg.ssl.dino import DINOModel
@@ -35,13 +38,34 @@ class CollapseMonitor(keras.callbacks.Callback):
             logs["teacher_entropy"] = self.model.teacher_entropy(self.global_views)
 
 
+def pool_rows(cfg: ExperimentConfig) -> list[dict]:
+    """Crops of the unlabelled pools ``ssl.extra_pools``, with absolute image paths.
+
+    A pool from the city of the benchmark (e.g. the Vaihingen frames with ``data.dataset:
+    vaihingen``) also covers its test areas: it is refused unless ``ssl.allow_same_city_pool``.
+    """
+    city = get_source(cfg.data.dataset).city
+    rows: list[dict] = []
+    for pool in cfg.ssl.extra_pools:
+        meta = read_pool_meta(pool)
+        if meta["city"] == city and not cfg.ssl.allow_same_city_pool:
+            raise ValueError(
+                f"pool {pool} comes from {city}, the city of the evaluation data: its images "
+                "cover the test areas. Set ssl.allow_same_city_pool=true to use it anyway."
+            )
+        root = Path(pool).resolve()
+        rows += [{**r, "image": str(root / r["image"])} for r in read_crops(pool, "unlabeled")]
+    return rows
+
+
 def pretrain_dino(cfg: ExperimentConfig) -> dict:
     s = cfg.ssl
     precision = setup_runtime(s.precision, s.seed)
     run_dir = make_run_dir(cfg, "dino")
 
     # Only training tiles are used (no labels are read): val/test stay untouched.
-    rows = read_crops(cfg.data.root, "train")
+    rows = read_crops(cfg.data.root, "train") + pool_rows(cfg)
+    log.info("DINO pre-training on %d crops (%d pools)", len(rows), len(s.extra_pools))
     augment = MultiCropAugment(
         s.global_crop_size, s.local_crop_size, s.local_crops_number,
         tuple(s.global_crops_scale), tuple(s.local_crops_scale), aerial=s.aerial_augment,
