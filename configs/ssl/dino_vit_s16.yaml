@@ -1,0 +1,11 @@
+# DINO pre-training of a ViT-S/16 encoder (the reference DINO setting, no ImageNet weights).
+base: ../base.yaml
+name: dino_vit_s16
+ssl:
+  arch: vit_s_16
+  weights: none
+  drop_path: 0.1
+  epochs: 100
+  batch_size: 32
+  local_crops_number: 6
+  export_path: runs/dino_vit_s16_backbone.weights.h5

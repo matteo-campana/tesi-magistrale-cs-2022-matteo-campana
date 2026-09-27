@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 from rsseg.config import EvalConfig
+from rsseg.console import track
 from rsseg.data.classes import CLASS_NAMES, CLUTTER, NUM_CLASSES, index_to_rgb
 from rsseg.data.datasets import read_tiles
 from rsseg.data.prepare import load_mask, load_rgb
@@ -32,7 +33,7 @@ def evaluate_tiles(
         raise FileNotFoundError(f"no '{cfg.split}' tiles in {data_root}/tiles.csv")
     total = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64)
     per_tile = {}
-    for row in tiles:
+    for row in track(tiles, f"evaluating {cfg.split} tiles"):
         image = load_rgb(row["image"])
         gt = load_mask(Path(data_root) / row["mask"])
         pred = predict_tile(

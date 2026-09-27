@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Training callbacks: codebook health and qualitative predictions, both logged to MLflow.
+"""Training callbacks: codebook health and qualitative predictions (both logged to MLflow) and
+a rich progress bar that replaces the Keras one.
 
 Place these callbacks *before* :class:`rsseg.tracking.MLflowMetricsLogger`: they add entries to
 ``logs`` that the logger then records.
@@ -13,6 +14,7 @@ import keras
 import mlflow
 import numpy as np
 
+from rsseg.console import err_console, format_value, make_progress
 from rsseg.eval.visualize import save_panels
 from rsseg.models.quantizer import find_quantizers
 
@@ -48,3 +50,62 @@ class PredictionLogger(keras.callbacks.Callback):
         save_panels(path, self.images, self.masks, preds)
         if mlflow.active_run():
             mlflow.log_artifact(str(path), artifact_path="predictions")
+
+
+class RichProgressBar(keras.callbacks.Callback):
+    """Progress bar per epoch (training and validation) plus a one-line summary of the metrics.
+
+    Use it with ``fit(..., verbose=0)``. ``keys`` limits the metrics shown in the bar (the
+    summary line shows all numeric entries of ``logs``).
+    """
+
+    def __init__(self, keys: tuple[str, ...] = ("loss", "miou")):
+        super().__init__()
+        self.keys = keys
+        self.progress = None
+        self.task = None
+        self.epochs = 0
+
+    def on_train_begin(self, logs=None):
+        self.epochs = self.params.get("epochs") or 0
+        self.progress = make_progress(transient=True)
+        self.progress.start()
+
+    def on_train_end(self, logs=None):
+        if self.progress is not None:
+            self.progress.stop()
+            self.progress = None
+
+    def _start(self, description: str, total: int | None):
+        if self.task is not None:
+            self.progress.remove_task(self.task)
+        self.task = self.progress.add_task(description, total=total, info="")
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self._start(f"epoch {epoch + 1}/{self.epochs}", self.params.get("steps"))
+
+    def on_train_batch_end(self, batch, logs=None):
+        info = "  ".join(
+            f"{k} {format_value(float(logs[k]))}" for k in self.keys if logs and k in logs
+        )
+        self.progress.update(self.task, completed=batch + 1, info=info)
+
+    def on_test_begin(self, logs=None):
+        if self.progress is not None:  # validation inside fit()
+            self._start("  validation", None)
+
+    def on_test_batch_end(self, batch, logs=None):
+        if self.progress is not None:
+            self.progress.update(self.task, completed=batch + 1)
+
+    def on_epoch_end(self, epoch, logs=None):
+        if self.task is not None:
+            self.progress.remove_task(self.task)
+            self.task = None
+        parts = []
+        for k, v in (logs or {}).items():
+            try:
+                parts.append(f"[key]{k}[/] {format_value(float(v))}")
+            except (TypeError, ValueError):
+                continue
+        err_console.log(f"[title]epoch {epoch + 1}/{self.epochs}[/]  " + "  ".join(parts))

@@ -17,10 +17,11 @@ import numpy as np
 from rsseg.config import ExperimentConfig, TrainConfig
 from rsseg.data.datasets import segmentation_loaders
 from rsseg.eval.report import evaluate_tiles, write_report
+from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.models.segmentor import build_segmentor
 from rsseg.runtime import setup_runtime
 from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
-from rsseg.train.callbacks import CodebookMonitor, PredictionLogger
+from rsseg.train.callbacks import CodebookMonitor, PredictionLogger, RichProgressBar
 from rsseg.train.losses import MaskedSparseCrossEntropy
 from rsseg.train.metrics import segmentation_metrics
 
@@ -52,7 +53,9 @@ def make_optimizer(cfg: TrainConfig) -> keras.optimizers.Optimizer:
         kwargs["gradient_accumulation_steps"] = cfg.grad_accum_steps
     if cfg.optimizer == "adamw":
         opt = keras.optimizers.AdamW(weight_decay=cfg.weight_decay, **kwargs)
-        opt.exclude_from_weight_decay(var_names=["bias", "gamma", "beta", "codebook"])
+        opt.exclude_from_weight_decay(
+            var_names=["bias", "gamma", "beta", "codebook", *NO_WEIGHT_DECAY]
+        )
         return opt
     if cfg.optimizer == "adam":
         return keras.optimizers.Adam(**kwargs)
@@ -94,6 +97,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
         ),
         keras.callbacks.CSVLogger(str(run_dir / "history.csv")),
         MLflowMetricsLogger(),
+        RichProgressBar(keys=("loss", "miou")),
     ]
     if cfg.train.early_stopping_patience:
         callbacks.insert(
@@ -116,7 +120,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
             validation_steps=cfg.train.validation_steps,
             callbacks=callbacks,
             shuffle=False,  # the DataLoader already shuffles
-            verbose=2,
+            verbose=0,  # progress is shown by RichProgressBar
         )
         best_val = max(history.history.get("val_miou", [float("nan")]))
         mlflow.log_metric("best_val_miou", best_val)

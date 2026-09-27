@@ -67,7 +67,7 @@ def build_dino_head(in_dim: int, cfg: SSLConfig, name: str) -> keras.Model:
 
 def build_dino_network(cfg: SSLConfig, name: str) -> tuple[keras.Model, keras.Model]:
     """Return ``(network, backbone)``: image → prototype logits, and the encoder inside it."""
-    backbone = build_backbone(cfg.arch, cfg.weights)
+    backbone = build_backbone(cfg.arch, cfg.weights, cfg.drop_path)
     inputs = keras.Input((None, None, 3), name="image")
     features = backbone(inputs)[-1]
     pooled = layers.GlobalAveragePooling2D(name="gap")(features)

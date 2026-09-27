@@ -32,6 +32,7 @@ import numpy as np
 from PIL import Image
 
 from rsseg.config import DataConfig
+from rsseg.console import track
 from rsseg.data.classes import IGNORE_INDEX, NUM_CLASSES, rgb_to_index
 from rsseg.data.splits import get_split
 
@@ -162,7 +163,9 @@ def prepare_dataset(cfg: DataConfig) -> dict[str, int]:
     crop_rows: list[dict] = []
     tile_rows: list[dict] = []
     acc = np.zeros((3, 3), dtype=np.float64)
-    for rows, tile_row, stats in _map(jobs, cfg.prepare_workers):
+    for rows, tile_row, stats in track(
+        _map(jobs, cfg.prepare_workers), "preparing tiles", total=len(jobs)
+    ):
         crop_rows.extend(rows)
         if tile_row:
             tile_rows.append(tile_row)

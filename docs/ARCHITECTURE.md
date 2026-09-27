@@ -24,6 +24,7 @@ L'esecuzione su GPU locale è descritta in [GPU_LOCALE.md](GPU_LOCALE.md).
 | Tracking | **MLflow** (default `sqlite:///mlflow.db`) | Parametri, metriche per epoca, artefatti (checkpoint, report, figure), confronto tra run |
 | Dati | PyTorch `Dataset`/`DataLoader`, Pillow, NumPy | Caricamento parallelo con i worker. Nessuna dipendenza da TensorFlow. |
 | Configurazione | Dataclass tipizzate + YAML componibili (`base:`) + override `--set k=v` | Nessuna dipendenza pesante, chiavi sconosciute rifiutate |
+| Terminale | **rich** | Log colorati, barre di avanzamento (epoche, preparazione, valutazione), tabelle dei risultati |
 
 ## 2. Vista d'insieme
 
@@ -61,14 +62,15 @@ flowchart LR
 ├── configs/
 │   ├── base.yaml                 # default dimensionati per GPU da 8 GB
 │   ├── smoke.yaml                # run end-to-end su dati sintetici (CPU)
-│   ├── experiments/              # griglia della tesi + baseline U-Net + protocollo thesis2022
-│   └── ssl/                      # DINO R18/R34
+│   ├── experiments/              # griglia della tesi + baseline U-Net + protocollo thesis2022 + Swin/ViT
+│   └── ssl/                      # DINO R18/R34/ViT-S16
 ├── src/rsseg/
 │   ├── __init__.py               # imposta KERAS_BACKEND=torch
 │   ├── config.py                 # dataclass + YAML + override
 │   ├── runtime.py                # precisione (bf16/fp16/fp32), seed, flag CUDA
 │   ├── tracking.py               # run MLflow, parametri, ambiente, callback metriche/VRAM
-│   ├── cli.py                    # rsseg synth|prepare|train|pretrain|evaluate|benchmark|report
+│   ├── console.py                # output rich: logging, barre di avanzamento, tabelle
+│   ├── cli.py                    # rsseg synth|prepare|train|pretrain|evaluate|benchmark|report|backbones
 │   ├── data/
 │   │   ├── classes.py            # classi, palette, LUT vettorizzata, mapping legacy
 │   │   ├── splits.py             # protocolli standard / thesis2022
@@ -77,8 +79,9 @@ flowchart LR
 │   │   ├── transforms.py         # augment congiunte, multi-crop DINO (anche "aerial")
 │   │   └── synthetic.py          # tile sintetiche con gli stessi nomi di file di Potsdam
 │   ├── models/
-│   │   ├── backbones.py          # ResNet Keras con nomi layer = torchvision
-│   │   ├── torchvision_weights.py# porting pesi ImageNet da torchvision
+│   │   ├── backbones.py          # ResNet Keras con nomi layer = torchvision, registro BACKBONES
+│   │   ├── transformers.py       # Swin Transformer e ViT (+ simple feature pyramid)
+│   │   ├── torchvision_weights.py# porting pesi ImageNet da torchvision (ResNet, Swin, ViT)
 │   │   ├── attention.py          # LinearPAM (LAM), ChannelAttention, blocco PAM/CAM
 │   │   ├── quantizer.py          # VectorQuantizer (EMA in variabili, init dai dati, restart)
 │   │   └── segmentor.py          # build_segmentor(ModelConfig)
@@ -88,7 +91,7 @@ flowchart LR
 │   ├── train/
 │   │   ├── losses.py             # MaskedSparseCrossEntropy (ignora solo 255)
 │   │   ├── metrics.py            # mIoU / mF1 / OA da matrice di confusione globale
-│   │   ├── callbacks.py          # CodebookMonitor, PredictionLogger
+│   │   ├── callbacks.py          # CodebookMonitor, PredictionLogger, RichProgressBar
 │   │   └── seg_train.py          # train_segmentation, evaluate_segmentation
 │   └── eval/
 │       ├── sliding_window.py     # inferenza su tile intere con finestre sovrapposte
@@ -96,7 +99,7 @@ flowchart LR
 │       ├── visualize.py          # pannelli TOP | GT | pred | errori
 │       └── benchmark.py          # picco VRAM e throughput di una configurazione
 ├── scripts/run_thesis_grid.sh    # griglia 2×2×2 × seed
-├── tests/                        # 32 test (unit + end-to-end su dati sintetici)
+├── tests/                        # 44 test (unit + end-to-end su dati sintetici)
 ├── docs/
 └── legacy/                       # materiale originale 2022, invariato
 ```
@@ -125,10 +128,16 @@ image ─► Backbone ─► [C1, C2, C3, C4] ─► skip(Ci) ─► Neck(C4) �
 | Parte | Varianti | Note |
 |---|---|---|
 | Backbone | `resnet18`, `resnet34`, `resnet50` | Scritto in Keras (in `keras.applications` mancano R18/R34). Pesi `imagenet` portati da torchvision con equivalenza numerica testata, `none`, oppure un file `.weights.h5` (per esempio il backbone DINO). |
+| Backbone Swin | `swin_t`, `swin_s`, `swin_b` | Swin Transformer v1: attenzione a finestre 7×7 (shifted) con bias di posizione relativa, patch merging. Gli stadi hanno già stride 4/8/16/32; ogni uscita passa da una LayerNorm (l'ultima è quella ImageNet). Padding delle finestre e maschera dello shift identici a torchvision (equivalenza testata anche su mappe non multiple della finestra). |
+| Backbone ViT | `vit_s_16`, `vit_b_16`, `vit_l_16` | ViT pre-norm, patch 16. I blocchi `depth/4 · k` formano i quattro livelli tramite la *simple feature pyramid* (ConvT ×2 due volte, ConvT ×2, identità, max-pool 2×2); canali `D/4, D/2, D, D`. Gli embedding di posizione (224²) vengono interpolati bicubicamente alla griglia dell'input. `vit_s_16` non ha pesi ImageNet in torchvision: si usa con `weights: none` o con il backbone DINO. |
 | Skip | `lam` (MAResU-Net: conv → LinearPAM ‖ ChannelAttention → 1×1), `plain` (identità) | `gamma` inizializzato a 0. Matematica dell'attenzione in float32. |
 | Neck | `identity`, `vq` | `VectorQuantizer`: straight-through, commitment β, EMA oppure codebook appreso per gradiente, init dal primo batch, restart dei codici morti, `perplexity`/`usage`. Proiezione 1×1 se `code_dim` è diverso dai canali. Con `vq.on_skips=true` si quantizzano anche le skip. |
 | Decoder | 4 blocchi 1×1 → ConvT 3×3 s2 → 1×1 (BN+ReLU), somma con la skip | Come MAResU-Net |
 | Head | ConvT 4×4 s2 → conv 3×3 → conv 3×3 (float32) | Logit sempre in float32 anche con mixed precision |
+
+Nei transformer `model.drop_path` (e `ssl.drop_path` per DINO) è il tasso massimo di stochastic depth,
+crescente linearmente con la profondità. Tabelle di bias relativo, embedding di posizione e class token
+sono esclusi dal weight decay di AdamW. `rsseg backbones` elenca tutti gli encoder.
 
 Correzioni rispetto al 2022, garantite dal design:
 - nessun modulo costruito come argomento di default (bug V1): ogni `build_*` crea istanze nuove;
@@ -187,7 +196,7 @@ campo è documentato.
 
 | Livello | Cosa si verifica |
 |---|---|
-| Equivalenza | Backbone Keras = torchvision (R18/R34, pesi casuali, statistiche BN casuali). LinearPAM = trascrizione NumPy della formula originale e = attenzione esplicita `1 + q̂·k̂`. CAM = riferimento NumPy. |
+| Equivalenza | Backbone Keras = torchvision (R18/R34, pesi casuali, statistiche BN casuali; Swin su mappe con padding e shift parziale; encoder ViT). LinearPAM = trascrizione NumPy della formula originale e = attenzione esplicita `1 + q̂·k̂`. CAM = riferimento NumPy. |
 | Invarianti | Split disgiunti, LUT biunivoca, allineamento immagine/maschera dopo l'augmentation, `label_fraction` deterministico |
 | VQ | Gradiente straight-through = identità. Loss solo in training. L'EMA ritrova i centri di cluster noti con perplexity alta. |
 | DINO | Loss = media delle loss per campione (nessun mescolamento). Teacher = copia iniziale, non addestrabile, aggiornato per EMA. Schedule. |
