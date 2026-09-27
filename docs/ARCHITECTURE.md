@@ -167,9 +167,14 @@ c ← λ·c + (1−λ)·media_batch(z_teacher)
 - La loss ignora **solo** il valore `255`: la classe clutter viene addestrata. C'è un test di regressione per il bug S1.
 - Le metriche sono `keras.metrics.Metric` che accumulano una matrice di confusione `float64` sull'intero split.
 - Scheduler per epoca: `step` (StepLR 15/0.4 come nella tesi), `cosine`, `constant`.
-- Callback, in ordine: `LearningRateScheduler`, `ModelCheckpoint` (miglior `val_miou`, solo pesi), `CodebookMonitor`,
-  `GPUMemoryLogger`, `PredictionLogger`, `CSVLogger`, `MLflowMetricsLogger` (ultimo, così registra anche le
-  voci aggiunte dagli altri).
+- Callback, in ordine: `EarlyStopping` (su `val_miou`, `train.early_stopping_patience`, default 20 epoche;
+  `null` lo disattiva), `LearningRateScheduler`, `TopKCheckpoint`, `CodebookMonitor`, `GPUMemoryLogger`,
+  `PredictionLogger`, `CSVLogger`, `MLflowMetricsLogger` (ultimo, così registra anche le voci aggiunte dagli altri).
+- `TopKCheckpoint` tiene in `<run>/checkpoints/` i pesi delle `train.keep_top_k` epoche (default 5) con la
+  `val_miou` più alta (`epoch_NNN_val_miou_X.XXXX.weights.h5`, elenco in `topk.json`) e copia il migliore in
+  `<run>/best.weights.h5`. La patience di default è più lunga dello `step_size` dello scheduler (15): un calo
+  del learning rate spesso fa ripartire i miglioramenti. La config `thesis2022` disattiva l'early stopping, come
+  nella tesi.
 - A fine training si ricaricano i pesi migliori, si valuta su tile intere e si registra il report su MLflow.
 
 ### 4.5 Valutazione (`rsseg.eval`)

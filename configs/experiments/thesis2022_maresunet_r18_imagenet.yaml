@@ -12,6 +12,7 @@ train:
   batch_size: 32
   grad_accum_steps: 1
   optimizer: adam
+  early_stopping_patience: null   # the thesis trained for a fixed number of epochs
 eval:
   window: 256
   stride: 128

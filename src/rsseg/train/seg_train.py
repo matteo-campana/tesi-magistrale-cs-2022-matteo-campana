@@ -21,7 +21,12 @@ from rsseg.models.backbones import NO_WEIGHT_DECAY
 from rsseg.models.segmentor import build_segmentor
 from rsseg.runtime import setup_runtime
 from rsseg.tracking import GPUMemoryLogger, MLflowMetricsLogger, mlflow_run
-from rsseg.train.callbacks import CodebookMonitor, PredictionLogger, RichProgressBar
+from rsseg.train.callbacks import (
+    CodebookMonitor,
+    PredictionLogger,
+    RichProgressBar,
+    TopKCheckpoint,
+)
 from rsseg.train.losses import MaskedSparseCrossEntropy
 from rsseg.train.metrics import segmentation_metrics
 
@@ -106,13 +111,7 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
 
     callbacks = [
         keras.callbacks.LearningRateScheduler(lambda epoch: lr_at_epoch(cfg.train, epoch)),
-        keras.callbacks.ModelCheckpoint(
-            str(best_path),
-            monitor="val_miou",
-            mode="max",
-            save_best_only=True,
-            save_weights_only=True,
-        ),
+        TopKCheckpoint(run_dir / "checkpoints", best_path, k=cfg.train.keep_top_k),
         CodebookMonitor(),
         GPUMemoryLogger(),
         PredictionLogger(
@@ -151,6 +150,8 @@ def train_segmentation(cfg: ExperimentConfig) -> dict:
         if best_path.exists():
             model.load_weights(str(best_path))
             mlflow.log_artifact(str(best_path), artifact_path="model")
+            mlflow.log_artifact(str(run_dir / "checkpoints" / "topk.json"), artifact_path="model")
+        mlflow.log_metric("epochs_trained", len(history.history.get("loss", [])))
         result: dict = {
             "run_id": run.info.run_id,
             "run_dir": str(run_dir),

@@ -13,6 +13,7 @@ from rsseg.config import ExperimentConfig, SSLConfig, load_config
 from rsseg.data.classes import IGNORE_INDEX
 from rsseg.eval.sliding_window import predict_tile
 from rsseg.ssl.dino import DINOModel, cosine_schedule, dino_loss
+from rsseg.train.callbacks import TopKCheckpoint
 from rsseg.train.losses import MaskedSparseCrossEntropy
 from rsseg.train.metrics import (
     MeanF1,
@@ -107,6 +108,24 @@ def test_lr_schedules():
     assert lr_at_epoch(cfg, cfg.epochs) == pytest.approx(cfg.min_lr)
 
 
+def test_top_k_checkpoint_keeps_best_epochs(tmp_path):
+    inputs = keras.Input((2,))
+    model = keras.Model(inputs, keras.layers.Dense(1)(inputs))
+    cb = TopKCheckpoint(tmp_path / "ckpt", tmp_path / "best.weights.h5", k=3)
+    cb.set_model(model)
+    scores = [0.1, 0.5, float("nan"), 0.3, 0.7, 0.2, 0.6]
+    for epoch, v in enumerate(scores):
+        model.get_layer(index=1).bias.assign([float(epoch)])  # identifies the saved epoch
+        cb.on_epoch_end(epoch, {"val_miou": v})
+    kept = sorted(p.name for p in (tmp_path / "ckpt").glob("*.weights.h5"))
+    assert kept == ["epoch_002_val_miou_0.5000.weights.h5", "epoch_005_val_miou_0.7000.weights.h5",
+                    "epoch_007_val_miou_0.6000.weights.h5"]  # fmt: skip
+    manifest = json.loads((tmp_path / "ckpt" / "topk.json").read_text(encoding="utf-8"))
+    assert [m["epoch"] for m in manifest] == [5, 7, 2]
+    model.load_weights(str(tmp_path / "best.weights.h5"))
+    assert float(ops.convert_to_numpy(model.get_layer(index=1).bias)[0]) == 4.0  # epoch 5
+
+
 def test_dino_loss_is_per_sample():
     """The loss must be the mean of independent per-sample losses (no mixing across the batch)."""
     rng = np.random.default_rng(0)
@@ -190,6 +209,7 @@ def test_end_to_end_train_and_pretrain(synthetic_dataset, tmp_path, monkeypatch)
     result = train_segmentation(cfg)
     run_dir = Path(result["run_dir"])
     assert (run_dir / "report.json").exists() and (run_dir / "best.weights.h5").exists()
+    assert (run_dir / "checkpoints" / "topk.json").exists()
     assert json.loads((run_dir / "report.json").read_text(encoding="utf-8"))["split"] == "test"
 
     mlflow.set_tracking_uri(uri)

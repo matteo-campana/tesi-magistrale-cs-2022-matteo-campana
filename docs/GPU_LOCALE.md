@@ -118,7 +118,8 @@ d'ambiente `MLFLOW_TRACKING_URI`.
 | Perplexity e utilizzo dei codebook VQ (`vq_perplexity`, `vq_usage`) | metrics |
 | DINO: `loss`, `teacher_entropy` (collasso se → 0), `lr`, `wd`, `momentum`, `teacher_temp` | metrics |
 | Predizioni sul batch di riferimento (TOP \| GT \| pred \| errori) ogni N epoche | artifacts/predictions |
-| Miglior checkpoint (`best.weights.h5`), backbone DINO | artifacts/model, artifacts/backbone |
+| Miglior checkpoint (`best.weights.h5`) ed elenco dei top-5 (`topk.json`), backbone DINO. I 5 checkpoint migliori restano solo in `runs/<run>/checkpoints/` | artifacts/model, artifacts/backbone |
+| Epoche effettivamente eseguite (`epochs_trained`: < `train.epochs` se è scattato l'early stopping) | metrics |
 | Valutazione su tile intere: `report.json`, `report.md`, mappe di predizione ed errore | artifacts/evaluation |
 | Ambiente: versioni, GPU, commit git | tags `env.*` |
 

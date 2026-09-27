@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Training callbacks: codebook health and qualitative predictions (both logged to MLflow) and
-a rich progress bar that replaces the Keras one.
+"""Training callbacks: top-k checkpoints, codebook health and qualitative predictions (both
+logged to MLflow) and a rich progress bar that replaces the Keras one.
 
 Place these callbacks *before* :class:`rsseg.tracking.MLflowMetricsLogger`: they add entries to
 ``logs`` that the logger then records.
@@ -8,6 +8,10 @@ Place these callbacks *before* :class:`rsseg.tracking.MLflowMetricsLogger`: they
 
 from __future__ import annotations
 
+import json
+import logging
+import math
+import shutil
 from pathlib import Path
 
 import keras
@@ -17,6 +21,54 @@ import numpy as np
 from rsseg.console import err_console, format_value, make_progress
 from rsseg.eval.visualize import save_panels
 from rsseg.models.quantizer import find_quantizers
+
+log = logging.getLogger(__name__)
+
+
+class TopKCheckpoint(keras.callbacks.Callback):
+    """Keep the weights of the ``k`` best epochs by ``monitor`` (higher is better).
+
+    Checkpoints are ``<dir>/epoch_<NNN>_<monitor>_<value>.weights.h5``; when a better epoch
+    arrives, the worst of the kept ones is deleted. ``best_path`` is always a copy of the best
+    checkpoint, and ``<dir>/topk.json`` lists the kept epochs from best to worst. Epochs whose
+    ``monitor`` is missing or NaN are skipped.
+    """
+
+    def __init__(self, directory: str | Path, best_path: str | Path, k: int = 5,
+                 monitor: str = "val_miou"):  # fmt: skip
+        super().__init__()
+        if k < 1:
+            raise ValueError(f"k must be >= 1, got {k}")
+        self.directory = Path(directory)
+        self.best_path = Path(best_path)
+        self.k = k
+        self.monitor = monitor
+        self.kept: list[tuple[float, int, Path]] = []  # (value, epoch, path), best first
+
+    def on_epoch_end(self, epoch, logs=None):
+        value = (logs or {}).get(self.monitor)
+        if value is None or math.isnan(float(value)):
+            log.warning("TopKCheckpoint: %s not available at epoch %d", self.monitor, epoch + 1)
+            return
+        value = float(value)
+        if len(self.kept) == self.k and value <= self.kept[-1][0]:
+            return
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path = self.directory / f"epoch_{epoch + 1:03d}_{self.monitor}_{value:.4f}.weights.h5"
+        self.model.save_weights(str(path))
+        self.kept.append((value, epoch + 1, path))
+        self.kept.sort(key=lambda t: (-t[0], t[1]))  # ties: the earlier epoch ranks first
+        for _, _, dropped in self.kept[self.k :]:
+            dropped.unlink(missing_ok=True)
+        self.kept = self.kept[: self.k]
+        if self.kept[0][2] == path:
+            shutil.copyfile(path, self.best_path)
+        (self.directory / "topk.json").write_text(
+            json.dumps(
+                [{"epoch": e, self.monitor: v, "path": p.name} for v, e, p in self.kept], indent=2
+            ),
+            encoding="utf-8",
+        )
 
 
 class CodebookMonitor(keras.callbacks.Callback):

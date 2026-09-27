@@ -31,6 +31,8 @@ train:
   scheduler: step          # StepLR(15, 0.4) as in the thesis
   step_size: 15
   gamma: 0.4
+  early_stopping_patience: 20   # epochs without a better val_miou (null = off)
+  keep_top_k: 5                 # best checkpoints kept in <run>/checkpoints
   precision: mixed_bfloat16
 
 eval:

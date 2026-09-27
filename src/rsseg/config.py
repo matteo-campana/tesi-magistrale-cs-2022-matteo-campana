@@ -116,7 +116,11 @@ class TrainConfig:
     steps_per_epoch: int | None = None
     """Limit the number of training batches per epoch (``None`` = full dataset)."""
     validation_steps: int | None = None
-    early_stopping_patience: int | None = None
+    early_stopping_patience: int | None = 20
+    """Stop after this many epochs without a better ``val_miou`` (``None`` disables it). Keep it
+    above ``step_size``: a learning-rate drop often restarts the improvements."""
+    keep_top_k: int = 5
+    """Checkpoints kept in ``<run>/checkpoints``: the ``k`` epochs with the highest ``val_miou``."""
     log_images_every: int = 10
 
 
