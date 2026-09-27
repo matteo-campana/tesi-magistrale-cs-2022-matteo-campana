@@ -157,9 +157,8 @@ Lo stile è lo stesso dell'app video-downloader (`rsseg/gui/theme.py` ne è l'ad
   le icone (play, pausa, stop, cartella) disegnate nel codice e ricolorate con il tema.
 
 Non cambiano con il tema i **colori delle classi** ISPRS (sono dati, identici alle figure della tesi) né le
-**esportazioni** per i documenti: «Salva grafico PNG» (Risultati) salva sempre il grafico in tema chiaro,
-«Esporta pannello…» (Inferenza), Markdown e CSV non dipendono dal tema. «Salva vista PNG» invece salva la vista
-così come appare sullo schermo.
+**esportazioni** per i documenti: «Salva grafico PNG» (Risultati) e «Salva vista PNG» (Inferenza) disegnano
+sempre in tema chiaro, anche con l'app in tema scuro; «Esporta pannello…», Markdown e CSV non dipendono dal tema.
 
 ## 9. File dell'applicazione
 

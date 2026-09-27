@@ -191,3 +191,28 @@ def test_exported_charts_are_light_whatever_the_theme(qapp, tmp_path):
     corner = QImage(str(tmp_path / "chart.png")).pixelColor(2, 2).name().upper()
     assert corner == LIGHT.surface.upper()
     assert theme.palette() is DARK and w.backgroundBrush().color().name().upper() == DARK.surface
+
+
+def test_saved_views_are_light_whatever_the_theme(qapp, tmp_path):
+    import numpy as np
+    from PySide6.QtGui import QImage
+
+    from rsseg.gui.widgets import SyncedViews
+
+    theme.apply_theme(qapp, DARK)
+    views = SyncedViews(["Immagine", "Predizione"])
+    views.resize(400, 220)
+    views.show()
+    for v in views.views:
+        v.set_image(np.zeros((16, 16, 3), np.uint8), fit=True)
+    qapp.processEvents()
+    views.render_png(tmp_path / "view.png")
+    image = QImage(str(tmp_path / "view.png"))
+    colors = {
+        image.pixelColor(x, y).name().upper() for x in range(0, 400, 7) for y in range(0, 220, 7)
+    }
+    assert LIGHT.surface_alt.upper() in colors  # the image views are drawn on the light inset
+    assert DARK.surface_alt.upper() not in colors and DARK.window.upper() not in colors
+    # and the screen is still dark
+    assert views.views[0].backgroundBrush().color().name().upper() == DARK.surface_alt
+    views.close()

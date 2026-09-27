@@ -539,7 +539,7 @@ class InferencePage(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Salva vista", str(self.ctx.root / "vista.png"),
                                               "PNG (*.png)")  # fmt: skip
         if path:
-            self.stack.currentWidget().grab().save(path)
+            theme.grab_light(self.stack.currentWidget()).save(path)
             self.ctx.status_message.emit(f"Vista salvata in {path}")
 
     def _export_panel(self) -> None:

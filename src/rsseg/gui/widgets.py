@@ -363,10 +363,7 @@ def _restyle(w) -> None:
 
 def save_plot_png(widget, path: str | Path) -> None:
     """Save a chart as PNG in the light theme (for documents), then restore the theme on screen."""
-    with theme.using(theme.LIGHT):
-        _restyle(widget)
-        widget.grab().save(str(path))
-    _restyle(widget)
+    theme.grab_light(widget).save(str(path))
 
 
 def set_plot_title(widget, title: str) -> None:
@@ -556,7 +553,8 @@ class SyncedViews(QWidget):
             self._sync(self.views[0])
 
     def render_png(self, path: str | Path) -> None:
-        self.grab().save(str(path))
+        """The views as PNG, in the light theme like every export."""
+        theme.grab_light(self).save(str(path))
 
 
 # ------------------------------------------------------------------------------ classes

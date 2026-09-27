@@ -313,12 +313,41 @@ def retheme_widgets() -> None:
     if app is None:
         return
     for top in app.topLevelWidgets():
-        for widget in (top, *top.findChildren(QWidget)):
-            if isinstance(widget, QAbstractButton) and widget.property("actionIcon"):
-                _paint_action_icon(widget)
-            retheme = getattr(widget, "retheme", None)
-            if callable(retheme):
-                retheme()
+        retheme_tree(top)
+
+
+def retheme_tree(root: QWidget) -> None:
+    """`retheme_widgets` for one widget and its children."""
+    for widget in (root, *root.findChildren(QWidget)):
+        if isinstance(widget, QAbstractButton) and widget.property("actionIcon"):
+            _paint_action_icon(widget)
+        retheme = getattr(widget, "retheme", None)
+        if callable(retheme):
+            retheme()
+
+
+def grab_light(widget: QWidget) -> QPixmap:
+    """An image of `widget` drawn in the light theme, whatever the theme on screen.
+
+    Exported views and charts go into documents (the thesis), so they are always light. The
+    light stylesheet is set on the widget only for the grab, which happens before the event loop
+    can repaint the screen, and the image is laid on the light window colour because the widget
+    itself is transparent.
+    """
+    own = widget.styleSheet()
+    with using(LIGHT):
+        widget.setStyleSheet(build_stylesheet(LIGHT) + own)
+        retheme_tree(widget)
+        shot = widget.grab()
+    widget.setStyleSheet(own)
+    retheme_tree(widget)
+    image = QPixmap(shot.size())
+    image.setDevicePixelRatio(shot.devicePixelRatio())
+    image.fill(QColor(LIGHT.window))
+    painter = QPainter(image)
+    painter.drawPixmap(0, 0, shot)
+    painter.end()
+    return image
 
 
 def on_palette_changed(callback: Callable[[Palette], None]) -> None:
