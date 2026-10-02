@@ -1,0 +1,58 @@
+% Quantizzazione vettoriale: (a) flusso in avanti e gradiente straight-through;
+% (b) geometria: assegnazione al codice più vicino, commitment e aggiornamento EMA.
+\begin{tikzpicture}[node distance=4mm and 7mm]
+  % ---------------- (a) flusso -------------------------------------------------
+  \begin{scope}[local bounding box=A]
+    \node[enc] (enc) {Encoder\\$f_\theta$};
+    \node[dato, right=of enc] (ze) {$\vect{z}_e(u)\in\R^{D}$};
+    \node[quant, right=of ze] (nn) {$k^\star=\argmin_k \norm{\vect{z}_e-\vect{e}_k}_2$};
+    \node[dato, right=of nn] (zq) {$\vect{z}_q(u)=\vect{e}_{k^\star}$};
+    \node[dec, right=of zq] (dec) {Decoder\\$g_\psi$};
+    \node[blocco, fill=SapRossoVelo, below=6mm of nn, minimum width=3.6cm] (cb)
+         {codebook $\{\vect{e}_1,\dots,\vect{e}_K\}\subset\R^{D}$};
+    \draw[flusso] (enc) -- (ze);
+    \draw[flusso] (ze) -- (nn);
+    \draw[flusso] (nn) -- (zq);
+    \draw[flusso] (zq) -- (dec);
+    \draw[flusso] (cb) -- (nn);
+    % gradiente straight-through
+    \draw[grad] (dec.north) to[bend right=22]
+      node[midway, above, font=\scriptsize, text=SapRosso]
+      {$\nabla_{\vect{z}_q}\mathcal{L}$ copiato su $\vect{z}_e$ (straight-through)} (ze.north);
+    \node[nota, anchor=north west] at ($(enc.south west)+(0,-3mm)$)
+      {\textcolor{ColFreccia}{$\longrightarrow$} in avanti \quad
+       \textcolor{SapRosso}{$\dashrightarrow$} gradiente};
+  \end{scope}
+  \node[font=\small\bfseries, anchor=south west] at ($(A.north west)+(0,1mm)$) {(a)};
+
+  % ---------------- (b) geometria ----------------------------------------------
+  \begin{scope}[shift={($(A.south west)+(1.0cm,-5.2cm)$)}, x=1.15cm, y=1.15cm, local bounding box=B]
+    % cella del codice e_2: vettori assegnati e loro centroide
+    \fill[SapRossoVelo] (2,1.6) circle (1.15);
+    \foreach \q in {(1.35,1.15),(2.55,1.05),(1.6,2.35),(2.65,2.15),(1.2,1.85)}{
+      \draw[SapGrigio, line width=0.5pt] \q ++(-2pt,-2pt) -- ++(4pt,4pt) \q ++(-2pt,2pt) -- ++(4pt,-4pt);
+    }
+    \coordinate (c) at (1.87,1.71);
+    \draw[SapGrigio, very thick] (c) circle (2.4pt);
+    % codici
+    \foreach \p/\n/\a in {{(0,0)}/1/below, {(2,1.6)}/2/below right, {(4.6,0.2)}/3/below,
+                          {(4.0,3.3)}/4/above, {(-0.3,2.9)}/5/above, {(6.6,3.1)}/6/above}{
+      \fill[SapRossoScuro] \p circle (1.8pt) node[\a, font=\scriptsize] {$\vect{e}_{\n}$};
+    }
+    % vettore dell'encoder e commitment
+    \coordinate (z) at (3.55,0.55);
+    \draw[black, line width=0.7pt] (z) ++(-2.5pt,-2.5pt) -- ++(5pt,5pt) (z) ++(-2.5pt,2.5pt) -- ++(5pt,-5pt);
+    \node[font=\scriptsize, anchor=north west] at (3.6,0.5) {$\vect{z}_e$};
+    \draw[->, SapRosso, thick] (z) -- ($(z)!0.5!(2,1.6)$);
+    \node[font=\scriptsize, text=SapRosso, anchor=south west] at (3.05,1.0) {commitment ($\beta$)};
+    % aggiornamento EMA del codice
+    \draw[->, SapRossoScuro, thick] (2,1.6) -- ($(2,1.6)!0.85!(c)$);
+    % didascalie interne
+    \node[font=\scriptsize, text=SapGrigio, align=center, anchor=south] at (2,2.8)
+      {vettori assegnati a $\vect{e}_2$ ($\times$)\\e loro centroide ($\circ$)};
+    \node[font=\scriptsize, text=SapRossoScuro, align=left, anchor=west] at (4.75,2.15)
+      {EMA: $\vect{e}_2$ si sposta verso\\il centroide della sua cella};
+    \draw[SapRossoScuro, densely dotted] (4.72,2.15) -- (2.12,1.66);
+  \end{scope}
+  \node[font=\small\bfseries, anchor=south west] at ($(B.north west)+(-1.0cm,1mm)$) {(b)};
+\end{tikzpicture}

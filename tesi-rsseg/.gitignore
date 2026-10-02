@@ -1,0 +1,15 @@
+# file di compilazione LaTeX
+build/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.lof
+*.lot
+*.out
+*.toc
+*.tdo
+*.loa
+*.synctex.gz

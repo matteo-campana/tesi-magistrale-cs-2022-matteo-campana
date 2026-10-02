@@ -1,0 +1,80 @@
+% =====================================================================
+%  Tesi di Laurea Magistrale — Engineering in Computer Science
+%  Sapienza Università di Roma
+%
+%  Nuova stesura della tesi del 2022 (legacy/tesi-magistrale/), basata sulla
+%  reimplementazione del repository (src/rsseg/, docs/).
+%
+%  Compilazione:  latexmk            (pdflatex + bibtex, vedi latexmkrc)
+%  Pulizia:       latexmk -c
+% =====================================================================
+
+% Stessa classe della tesi del 2022 (A4 fronte-retro; il corpo 11pt è il default su A4).
+\documentclass[a4paper,twoside]{sapthesis}
+
+% --- Modalità bozza: mostra note \todo, segnaposto e indice delle note -------
+\newif\ifbozza
+\bozzatrue        % \bozzafalse per la versione da consegnare
+
+\newcommand{\TitoloTesi}{Segmentazione semantica di immagini telerilevate ad altissima risoluzione}
+
+\input{impostazioni/pacchetti}
+\input{impostazioni/comandi}
+
+% --- Frontespizio (dati come nella tesi del 2022) ------------------------
+\title{\TitoloTesi}
+\subtitle{Attenzione lineare, quantizzazione vettoriale e auto-distillazione:\\
+          una rivalutazione riproducibile}
+\author{Matteo Campana}
+\IDnumber{1692599}
+\courseorganizer{Facolt\`a di Ingegneria dell'Informazione, Informatica e Statistica}
+\course{Corso di Laurea Magistrale in Engineering in Computer Science -- Ingegneria Informatica}
+\AcademicYear{2026/2027}   % TODO: verificare l'anno accademico della discussione
+\advisor{Prof. Aurelio Uncini}
+\coadvisor{Dr. Simone Scardapane}
+\coadvisor{Dr. Valerio Marsocci}
+\authoremail{campana.1692599@studenti.uniroma1.it}
+\copyyear{2026}
+
+\begin{document}
+
+\frontmatter
+\maketitle
+
+% --- Dedica -------------------------------------------------------------------
+\cleardoublepage
+\thispagestyle{empty}
+\vspace*{0.25\textheight}
+\begin{flushright}
+  \itshape
+  Dedicato a tutte le persone che, nonostante gli ostacoli,\\
+  mi hanno impedito di lasciare questo percorso.
+\end{flushright}
+
+\input{capitoli/abstract}
+\input{capitoli/ringraziamenti}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\ifbozza
+  \cleardoublepage
+  \listoftodos[Elenco delle parti da completare]
+\fi
+
+\mainmatter
+\input{capitoli/01_introduzione}
+\input{capitoli/02_premesse}
+\input{capitoli/03_teoria}
+\input{capitoli/04_metodologia}
+\input{capitoli/05_esperimenti}
+\input{capitoli/06_prospettive}
+
+\backmatter
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{\bibname}
+\bibliographystyle{sapthesis-it}
+\bibliography{bibliografia}
+
+\end{document}

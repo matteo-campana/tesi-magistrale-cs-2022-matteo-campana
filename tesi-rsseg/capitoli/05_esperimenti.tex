@@ -1,0 +1,401 @@
+% =====================================================================
+%  Capitolo 5 — Esperimenti
+%  Le tabelle hanno già righe, colonne e didascalie definitive: i valori \ND vanno
+%  sostituiti con "media $\pm$ dev. std." sui tre seed, presi dai report delle campagne
+%  (runs/campaigns/<campagna>/report.md) e da MLflow.
+% =====================================================================
+\chapter{Esperimenti}
+\label{cap:esperimenti}
+
+Questo capitolo raccoglie gli esperimenti, organizzati per domanda di ricerca secondo il disegno
+della \cref{tab:disegno}. Salvo dove indicato, i valori sono mIoU, mF1 e OA sul test di Potsdam
+(protocollo standard, etichette piene), come media $\pm$ deviazione standard su tre seed. Le
+colonne \enquote{eroded} usano le etichette senza bordi.
+
+\Segnaposto{Gli esperimenti completi non sono ancora stati eseguiti. Ogni sezione contiene le
+tabelle e le figure previste, con valori \ND{} da sostituire. Non trarre conclusioni prima di
+aver completato le campagne corrispondenti.}
+
+% ---------------------------------------------------------------------
+\section{Stato delle campagne}
+\label{sec:stato-campagne}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[Stato delle campagne di esperimenti]{Stato delle campagne di esperimenti. Le prove
+    \enquote{rapide} verificano la catena completa su pochi passi e non producono risultati.}
+  \label{tab:stato-campagne}
+  \begin{tabular}{|l|c|l|l|}
+    \hline
+    \textbf{Campagna} & \textbf{Passi} & \textbf{Durata stimata} & \textbf{Stato} \\
+    \hline
+    \codice{thesis2022}      & 3   & $\sim$15 h            & da eseguire \\
+    \codice{rq1\_attention}  & 6   & $\sim$18--29 h        & da eseguire \\
+    \codice{thesis\_grid}    & 26  & $\sim$79--125 h       & da eseguire \\
+    \codice{rq3\_low\_label} & 38  & $\sim$112--177 h      & da eseguire \\
+    \codice{rq4\_aerial}     & 14  & $\sim$32--48 h        & da eseguire \\
+    \codice{rq5\_efficiency} & 10  & $\sim$6 min           & prova rapida eseguita \\
+    \codice{rq6\_ndsm}       & 9   & $\sim$27--44 h        & da eseguire \\
+    \codice{transformers}    & 10  & $\sim$30--195 h       & da eseguire \\
+    \codice{vaihingen}       & 9   & $\sim$8--13 h         & da eseguire \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Aggiornare la colonna \enquote{Stato} (e le durate misurate) man mano che le
+campagne vengono completate.}
+
+% ---------------------------------------------------------------------
+\section{Riproduzione del protocollo del 2022}
+\label{sec:exp-2022}
+
+Il primo esperimento addestra il modello migliore della tesi del 2022 (\maresunet{} R18 ImageNet)
+sul protocollo di allora (\cref{fig:split}b), ma con le correzioni che non cambiano il protocollo:
+clutter nella perdita, metriche globali, normalizzazione degli ingressi, rimescolamento dei
+batch. Serve a separare l'effetto delle correzioni da quello del cambio di protocollo.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[Confronto con la tesi del 2022 sul suo protocollo]{\maresunet{} R18 ImageNet sul
+    protocollo della tesi del 2022: valori riportati allora e reimplementazione.}
+  \label{tab:exp-2022}
+  \begin{tabular}{|l|c|c|c|c|}
+    \hline
+    \textbf{Esecuzione} & \textbf{OA} & \textbf{mF1} & \textbf{mIoU} & \textbf{IoU clutter} \\
+    \hline
+    \rowcolor{RigaRiferimento}
+    Tesi 2022 (tab.~4.5) & 0,791 & 0,722 & 0,604 & 0,149 \\
+    Reimplementazione, protocollo 2022 & \ND & \ND & \ND & \ND \\
+    Reimplementazione, protocollo standard & \ND & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Inserire risultati esperimento \codice{thesis2022} (3 seed) e confrontarli con il
+riferimento 2022. Verificare in particolare l'IoU del clutter e la distanza tra validation e test.}
+
+% ---------------------------------------------------------------------
+\section{\RQ{1}: contributo dell'attenzione lineare}
+\label{sec:exp-rq1}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ1: connessioni di salto con e senza attenzione]{\RQ{1}. Encoder ResNet-18 ImageNet
+    con connessioni di salto identità (rete di tipo U-Net) e con attenzione lineare
+    (\maresunet{}).}
+  \label{tab:exp-rq1}
+  \begin{tabular}{|l|c|c|c|c|r|}
+    \hline
+    \textbf{Connessioni di salto} & \textbf{OA} & \textbf{mF1} & \textbf{mIoU} & \makecell{\textbf{mIoU}\\\textbf{eroded}} & \textbf{Parametri} \\
+    \hline
+    Identità (U-Net) & \ND & \ND & \ND & \ND & \ND \\
+    LAM + CAM (\maresunet{}) & \ND & \ND & \ND & \ND & \ND \\
+    \hline
+    $\Delta$ appaiata (media $\pm$ dev. std.) & \multicolumn{2}{c|}{} & \ND & \ND & \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ1: IoU per classe]{\RQ{1}. IoU per classe sul test di Potsdam.}
+  \label{tab:exp-rq1-classi}
+  \begin{tabular}{|l|c|c|c|c|c|c|}
+    \hline
+    \textbf{Modello} & \makecell{\ClasseBoxX{ClsImpervious}\\\textbf{Imp.}} & \makecell{\ClasseBoxX{ClsBuilding}\\\textbf{Edif.}} &
+    \makecell{\ClasseBoxX{ClsLowVeg}\\\textbf{Veg. b.}} & \makecell{\ClasseBoxX{ClsTree}\\\textbf{Alberi}} &
+    \makecell{\ClasseBoxX{ClsCar}\\\textbf{Auto}} & \makecell{\ClasseBoxX{ClsClutter}\\\textbf{Clutter}} \\
+    \hline
+    U-Net R18 & \ND & \ND & \ND & \ND & \ND & \ND \\
+    \maresunet{} R18 & \ND & \ND & \ND & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Inserire risultati esperimento \codice{rq1\_attention}. Analizzare le classi in cui la
+differenza è maggiore alla luce della \cref{oss:contrasto} (coerenza delle grandi superfici
+rispetto ai contorni) e misurare $\norm{\bar{\vect{m}}}_2$ sui modelli addestrati.}
+
+% ---------------------------------------------------------------------
+\section{\RQ{2}: quantizzazione vettoriale}
+\label{sec:exp-rq2}
+
+\subsection{Griglia della tesi sul protocollo standard}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ2: griglia architettura, encoder e pre-addestramento]{\RQ{2} (e \RQ{3} con tutte le
+    etichette). Griglia della tesi del 2022 rieseguita sul protocollo standard.}
+  \label{tab:exp-griglia}
+  \begin{tabular}{|l|l|l|c|c|c|c|}
+    \hline
+    \textbf{Modello} & \textbf{Encoder} & \textbf{Pre-addestr.} & \textbf{OA} & \textbf{mF1} & \textbf{mIoU} & \textbf{PPL finale} \\
+    \hline
+    \maresunet{}   & R18 & ImageNet & \ND & \ND & \ND & -- \\
+    \maresunet{}   & R34 & ImageNet & \ND & \ND & \ND & -- \\
+    \maresunet{}   & R18 & DINO     & \ND & \ND & \ND & -- \\
+    \maresunet{}   & R34 & DINO     & \ND & \ND & \ND & -- \\
+    \maresunetvq{} & R18 & ImageNet & \ND & \ND & \ND & \ND \\
+    \maresunetvq{} & R34 & ImageNet & \ND & \ND & \ND & \ND \\
+    \maresunetvq{} & R18 & DINO     & \ND & \ND & \ND & \ND \\
+    \maresunetvq{} & R34 & DINO     & \ND & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Inserire risultati esperimento \codice{thesis\_grid} (26 passi).}
+
+\subsection{Ablation del codebook}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ2: ablation del codebook]{\RQ{2}. Ablation del codebook su \maresunetvq{} R18
+    ImageNet: dimensione $K$, peso del commitment $\beta$, aggiornamento e posizione della
+    quantizzazione. La perplexity è misurata nell'ultima epoca.}
+  \label{tab:exp-vq-ablation}
+  \begin{tabular}{|c|c|l|l|c|c|c|}
+    \hline
+    $\bm{K}$ & $\bm{\beta}$ & \textbf{Aggiornamento} & \textbf{Quantizzato} & \textbf{mIoU} & \textbf{PPL} & \textbf{Uso} \\
+    \hline
+    64   & 0,25 & EMA & neck & \ND & \ND & \ND \\
+    256  & 0,25 & EMA & neck & \ND & \ND & \ND \\
+    \rowcolor{RigaRiferimento}
+    512  & 0,25 & EMA & neck & \ND & \ND & \ND \\
+    1024 & 0,25 & EMA & neck & \ND & \ND & \ND \\
+    512  & 0,1  & EMA & neck & \ND & \ND & \ND \\
+    512  & 1,0  & EMA & neck & \ND & \ND & \ND \\
+    512  & 0,25 & gradiente ($\gamma=0$) & neck & \ND & \ND & \ND \\
+    512  & 0,25 & EMA & neck + salto & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[4.5cm]{Perplexity e uso del codebook per epoca, con quantizzazione solo del
+    neck e anche delle connessioni di salto (verifica della \cref{prop:aggiramento}).}
+  \caption[RQ2: perplexity del codebook durante l'addestramento]{\RQ{2}. Perplexity e uso del
+    codebook durante l'addestramento.}
+  \label{fig:exp-perplexity}
+\end{figure}
+
+\Segnaposto{Inserire risultati esperimento di ablation VQ (sweep su \codice{model.vq.*}). Verificare
+se la perplexity del neck diminuisce quando le connessioni di salto non sono quantizzate.}
+
+% ---------------------------------------------------------------------
+\section{\RQ{3}: pre-addestramento DINO con poche etichette}
+\label{sec:exp-rq3}
+
+\subsection{Diagnostica del pre-addestramento}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[4.5cm]{Perdita DINO ed entropia media del teacher per epoca (R18 su Potsdam e
+    su Potsdam + Toronto); riferimenti a $0$ e a $\log K\approx9{,}70$ per riconoscere il
+    collasso (\cref{sec:collasso}).}
+  \caption[RQ3: diagnostica del pre-addestramento DINO]{\RQ{3}. Diagnostica del
+    pre-addestramento DINO.}
+  \label{fig:exp-dino-diagnostica}
+\end{figure}
+
+\subsection{Frazione di etichette}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ3: mIoU al variare della frazione di etichette]{\RQ{3}. mIoU di test di
+    \maresunet{} R18 al variare della frazione di etichette e del pre-addestramento
+    dell'encoder. Stesso budget di iterazioni per ogni frazione (\cref{tab:frazioni}).}
+  \label{tab:exp-rq3}
+  \begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{Etichette} & \textbf{ImageNet} & \makecell{\textbf{DINO}\\\textbf{(Potsdam)}} & \makecell{\textbf{DINO}\\\textbf{(Potsdam + Toronto)}} \\
+    \hline
+    1\%   & \ND & \ND & \ND \\
+    10\%  & \ND & \ND & \ND \\
+    25\%  & \ND & \ND & \ND \\
+    100\% & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[5cm]{mIoU in funzione della frazione di etichette (asse logaritmico) per i
+    tre pre-addestramenti, con barre di errore sui seed.}
+  \caption[RQ3: curva di apprendimento rispetto alle etichette]{\RQ{3}. mIoU in funzione della
+    frazione di etichette.}
+  \label{fig:exp-rq3}
+\end{figure}
+
+\Segnaposto{Inserire risultati esperimento \codice{rq3\_low\_label} (38 passi). Valutare
+l'\cref{ip:dino} con i criteri della \cref{sec:statistica}.}
+
+% ---------------------------------------------------------------------
+\section{\RQ{4}: augmentation per immagini aeree}
+\label{sec:exp-rq4}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ4: augmentation standard e aerea]{\RQ{4}. Fine-tuning di \maresunet{} R18 da encoder
+    DINO pre-addestrati con le due politiche della \cref{tab:augmentation-dino}.}
+  \label{tab:exp-rq4}
+  \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Augmentation DINO} & \makecell{\textbf{mIoU}\\\textbf{(100\%)}} & \makecell{\textbf{mIoU}\\\textbf{(10\%)}} & \makecell{\textbf{Entropia finale}\\\textbf{del teacher}} \\
+    \hline
+    Standard & \ND & \ND & \ND \\
+    Aerea    & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Inserire risultati esperimento \codice{rq4\_aerial} (14 passi).}
+
+% ---------------------------------------------------------------------
+\section{\RQ{5}: accuratezza e costo}
+\label{sec:exp-rq5}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ5: accuratezza e costo degli encoder]{\RQ{5}. Accuratezza e costo degli encoder.
+    Memoria e throughput si riferiscono a un passo di training su RTX 4060 (\cref{tab:vram}); il
+    tempo di inferenza è quello di una tile di test $6000\times6000$.}
+  \label{tab:exp-rq5}
+  \begin{tabular}{|l|r|r|r|r|c|}
+    \hline
+    \textbf{Encoder} & \textbf{Parametri} & \makecell{\textbf{GFLOP}\\\textbf{($512^2$)}} & \textbf{VRAM} & \textbf{s/tile} & \textbf{mIoU} \\
+    \hline
+    ResNet-18 & \ND & \ND & \SI{4,8}{\giga\byte} & \ND & \ND \\
+    ResNet-34 & \ND & \ND & \SI{5,5}{\giga\byte} & \ND & \ND \\
+    ResNet-50 (batch 4) & \ND & \ND & \ND & \ND & \ND \\
+    Swin-T    & \ND & \ND & \SI{4,2}{\giga\byte} & \ND & \ND \\
+    ViT-B/16  & \ND & \ND & \SI{7,1}{\giga\byte} & \ND & \ND \\
+    ViT-S/16 (DINO) & \ND & \ND & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[5cm]{Diagramma accuratezza--costo (mIoU rispetto a tempo di inferenza per tile
+    o GFLOP), con la frontiera di Pareto.}
+  \caption[RQ5: frontiera accuratezza--costo]{\RQ{5}. Frontiera accuratezza--costo.}
+  \label{fig:exp-rq5}
+\end{figure}
+
+\Segnaposto{Inserire risultati esperimenti \codice{rq5\_efficiency} (campagna completa) e
+\codice{transformers}. Aggiungere il conteggio di parametri e FLOP e il tempo di inferenza per
+tile.}
+
+% ---------------------------------------------------------------------
+\section{\RQ{6}: altezza sul terreno come quarto canale}
+\label{sec:exp-rq6}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[RQ6: RGB e RGB + nDSM]{\RQ{6}. \maresunet{} R18 ImageNet con ingresso RGB e RGB +
+    nDSM (ufficiale \codice{lastools} e calcolato dal DSM).}
+  \label{tab:exp-rq6}
+  \begin{tabular}{|l|c|c|c|c|c|}
+    \hline
+    \textbf{Ingresso} & \textbf{mIoU} & \makecell{\textbf{IoU}\\\textbf{edif.}} & \makecell{\textbf{IoU}\\\textbf{imp.}} & \makecell{\textbf{IoU}\\\textbf{alberi}} & \makecell{\textbf{IoU}\\\textbf{veg. b.}} \\
+    \hline
+    RGB & \ND & \ND & \ND & \ND & \ND \\
+    RGB + nDSM ufficiale & \ND & \ND & \ND & \ND & \ND \\
+    RGB + nDSM calcolato & \ND & \ND & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[5cm]{Differenza tra le matrici di confusione normalizzate per riga (RGB + nDSM
+    meno RGB), con evidenza delle coppie edifici/superfici impermeabili e alberi/vegetazione
+    bassa.}
+  \caption[RQ6: effetto dell'nDSM sulle confusioni tra classi]{\RQ{6}. Effetto dell'nDSM sulle
+    confusioni tra classi.}
+  \label{fig:exp-rq6}
+\end{figure}
+
+\Segnaposto{Inserire risultati esperimento \codice{rq6\_ndsm} e confronto tra inizializzazioni
+\codice{mean} e \codice{zeros} del quarto canale (\cref{prop:inflazione}).}
+
+% ---------------------------------------------------------------------
+\section{Secondo benchmark: Vaihingen}
+\label{sec:exp-vaihingen}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[Vaihingen]{Risultati sul test di Vaihingen (17 aree). Metrica principale: mIoU senza
+    clutter.}
+  \label{tab:exp-vaihingen}
+  \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Modello} & \textbf{OA} & \makecell{\textbf{mF1}\\\textbf{(senza clutter)}} & \makecell{\textbf{mIoU}\\\textbf{(senza clutter)}} \\
+    \hline
+    U-Net R18 & \ND & \ND & \ND \\
+    \maresunet{} R18 & \ND & \ND & \ND \\
+    \maresunet{} R18 + nDSM calcolato & \ND & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Inserire risultati esperimento \codice{vaihingen}.}
+
+% ---------------------------------------------------------------------
+\section{Analisi qualitativa}
+\label{sec:exp-qualitativa}
+
+\begin{figure}[H]
+  \centering
+  \FiguraMancante[6cm]{Pannelli per 3--4 porzioni di tile di test: ortofoto, verità a terra,
+    predizione di \maresunet{} R18 ImageNet, predizione della variante migliore, mappa degli
+    errori. Legenda con i colori ISPRS:
+    \ClasseBoxX{ClsImpervious}~imp., \ClasseBoxX{ClsBuilding}~edif.,
+    \ClasseBoxX{ClsLowVeg}~veg. bassa, \ClasseBoxX{ClsTree}~alberi,
+    \ClasseBoxX{ClsCar}~auto, \ClasseBoxX{ClsClutter}~clutter.}
+  \caption[Esempi qualitativi]{Esempi qualitativi sul test di Potsdam.}
+  \label{fig:exp-qualitativa}
+\end{figure}
+
+\Segnaposto{Generare le figure con \codice{rsseg predict} e la visualizzazione dei pannelli,
+scegliendo le porzioni prima di guardare le predizioni, per evitare una selezione favorevole.}
+
+% ---------------------------------------------------------------------
+\section{Sintesi per domanda di ricerca}
+\label{sec:exp-sintesi}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[Sintesi dei risultati per domanda di ricerca]{Sintesi dei risultati per domanda di
+    ricerca, secondo i criteri della \cref{sec:statistica}: \enquote{sostenuta},
+    \enquote{respinta} o \enquote{non conclusiva}.}
+  \label{tab:exp-sintesi}
+  \begin{tabular}{|c|l|c|c|}
+    \hline
+    \textbf{RQ} & \textbf{Ipotesi} & \textbf{$\Delta$ mIoU} & \textbf{Esito} \\
+    \hline
+    \RQ{1} & \Cref{ip:lam}   & \ND & \ND \\
+    \RQ{2} & \Cref{ip:vq}    & \ND & \ND \\
+    \RQ{3} & \Cref{ip:dino}  & \ND & \ND \\
+    \RQ{4} & \Cref{ip:aug}   & \ND & \ND \\
+    \RQ{5} & descrittiva     & --  & \ND \\
+    \RQ{6} & \Cref{ip:ndsm}  & \ND & \ND \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\Segnaposto{Compilare la sintesi solo a campagne concluse. Ogni esito va motivato con i valori
+appaiati per seed e con l'intervallo bootstrap.}

@@ -1,0 +1,310 @@
+% =====================================================================
+%  Capitolo 2 — Premesse: stato dell'arte e lavoro del 2022
+% =====================================================================
+\chapter{Premesse}
+\label{cap:premesse}
+
+Questo capitolo colloca il lavoro nel contesto della letteratura e ne fissa il punto di
+partenza. Le prime sezioni ripercorrono le quattro linee di ricerca su cui la tesi si appoggia:
+segmentazione semantica, attenzione efficiente, rappresentazioni discrete e apprendimento
+auto-supervisionato. Le ultime riassumono la tesi del 2022 e ne propongono una lettura critica,
+da cui discendono le scelte di metodo dei capitoli successivi.
+
+\section{Segmentazione semantica con reti profonde}
+\label{sec:stato-segmentazione}
+
+Le \emph{Fully Convolutional Networks} (FCN) di Long et al.~\cite{long2015fcn} hanno mostrato
+che una rete di classificazione può produrre una predizione densa sostituendo gli strati
+completamente connessi con convoluzioni e ricampionando le mappe di attivazione alla risoluzione
+dell'ingresso. Il limite principale di questo schema è la perdita di dettaglio spaziale dovuta
+al sottocampionamento progressivo. Due famiglie di soluzioni lo affrontano in modo diverso.
+
+\begin{itemize}
+  \item Le architetture \textbf{encoder-decoder} con connessioni di salto, come
+  U-Net~\cite{ronneberger2015unet}, recuperano il dettaglio combinando, a ogni scala del
+  decoder, le mappe ad alta risoluzione dell'encoder. Con un encoder residuale~\cite{he2016resnet}
+  si ottengono le varianti \emph{ResU-Net}, che possono riusare pesi pre-addestrati su
+  ImageNet~\cite{deng2009imagenet}.
+  \item Le architetture con \textbf{convoluzioni dilatate} (\emph{atrous}), come
+  DeepLab~\cite{chen2018deeplab}, allargano il campo recettivo senza ridurre la risoluzione,
+  a un costo di memoria maggiore.
+\end{itemize}
+
+Più di recente gli encoder di tipo transformer, come ViT~\cite{dosovitskiy2021vit} e Swin
+Transformer~\cite{liu2021swin}, e i decoder leggeri come quello di
+SegFormer~\cite{xie2021segformer} hanno spostato lo stato dell'arte, al prezzo di un costo
+computazionale e di un fabbisogno di dati maggiori.
+
+\section{Segmentazione di immagini aeree e il benchmark ISPRS}
+\label{sec:stato-aereo}
+
+Il benchmark ISPRS~\cite{rottensteiner2012isprs} ha reso confrontabili i metodi di
+classificazione di scene urbane aeree. Tra i primi lavori con reti profonde,
+Sherrah~\cite{sherrah2016fcn} e Marmanis et al.~\cite{marmanis2016ensemble} hanno applicato FCN
+e loro ensemble. Audebert et al.~\cite{audebert2018beyond} hanno mostrato il vantaggio di
+fondere l'informazione altimetrica (DSM/nDSM) con quella spettrale, sia con una fusione precoce
+(come canale aggiuntivo) sia con una fusione tardiva tra due rami. Lo stesso gruppo di autori di
+\maresunet{} ha poi proposto UNetFormer~\cite{wang2022unetformer}, un decoder con attenzione
+globale-locale per scene urbane. MMSegmentation~\cite{mmseg2020} ha consolidato uno split di
+riferimento per Potsdam e Vaihingen, adottato da gran parte della letteratura recente, che questa
+tesi segue (\cref{sec:split}).
+
+Due caratteristiche distinguono il dominio dalle immagini naturali e guidano le scelte di
+questo lavoro. La prima è l'\textbf{assenza di un'orientazione canonica}: una scena aerea
+ruotata di \ang{90} o riflessa resta una scena plausibile, quindi le trasformazioni del gruppo
+diedrale $D_4$ sono augmentation \enquote{gratuite}, che non alterano le etichette. La seconda è
+la \textbf{disponibilità di modalità ausiliarie} co-registrate, come il DSM e l'nDSM, che
+portano un'informazione (l'altezza) non ricavabile dal solo colore.
+
+\section{Attenzione efficiente}
+\label{sec:stato-attenzione}
+
+L'attenzione \emph{dot-product}~\cite{vaswani2017attention} pesa ogni posizione in base alla
+somiglianza tra la sua \emph{query} e le \emph{key} di tutte le altre. Nella visione artificiale è stata
+introdotta come blocco \emph{non-local}~\cite{wang2018nonlocal} e, per la segmentazione, da
+DANet~\cite{fu2019danet}, che affianca un'attenzione sulle posizioni (PAM) a una sui canali
+(CAM). Il costo di memoria e di calcolo cresce però con il quadrato del numero di posizioni
+$N=HW$, e questo ne limita l'uso alle mappe a bassa risoluzione.
+
+Le \emph{attenzioni lineari} riscrivono il prodotto $\softmax(QK\T)V$ come $\phi(Q)\bigl(\phi(K)\T
+V\bigr)$ per un'opportuna mappa di caratteristiche $\phi$, e sfruttano l'associatività del
+prodotto matriciale per ridurre il costo a $\bigO{N}$~\cite{katharopoulos2020linear}. Il
+\emph{Linear Attention Mechanism} (LAM) di Li et al.~\cite{li2020lam} ottiene lo stesso risultato
+con uno sviluppo di Taylor al primo ordine dell'esponenziale, applicato a query e key
+normalizzate. \maresunet{}~\cite{li2022maresunet} inserisce un blocco PAM lineare + CAM in ogni
+connessione di salto di una ResU-Net. La derivazione completa è nella
+\cref{sec:attenzione-lineare}.
+
+\section{Rappresentazioni discrete}
+\label{sec:stato-discrete}
+
+Gli autoencoder variazionali~\cite{kingma2014vae} apprendono una rappresentazione latente
+continua regolarizzata verso una distribuzione a priori. Il VQ-VAE~\cite{vandenoord2017vqvae}
+sostituisce lo spazio latente continuo con un insieme finito di vettori (\emph{codebook}): ogni
+vettore prodotto dall'encoder viene sostituito dal codice più vicino. L'operazione non è
+derivabile e il gradiente viene propagato con lo stimatore
+\emph{straight-through}~\cite{bengio2013straight}. Le rappresentazioni discrete sono state alla
+base di modelli generativi ad alta fedeltà, come VQ-VAE-2~\cite{razavi2019vqvae2} e
+VQGAN~\cite{esser2021taming}. Il loro problema pratico più noto è il \emph{collasso del
+codebook}: pochi codici vengono usati e gli altri restano \enquote{morti}. Le contromisure più
+diffuse sono l'aggiornamento per medie mobili esponenziali (EMA), l'inizializzazione dai dati e
+il riavvio dei codici inutilizzati~\cite{lancucki2020robust}. Per la segmentazione, il codebook
+agisce come un \emph{information bottleneck}~\cite{tishby2000ib}: limita la quantità di
+informazione che attraversa il collo di bottiglia, con un possibile effetto regolarizzante.
+L'idea richiama i \emph{visual words} di OBoW~\cite{gidaris2021obow}, in cui le feature vengono
+assegnate alla parola più vicina di un vocabolario.
+
+\section{Apprendimento auto-supervisionato}
+\label{sec:stato-ssl}
+
+L'apprendimento auto-supervisionato (\emph{self-supervised learning}, SSL) costruisce un compito
+ausiliario a partire dai soli dati, senza etichette, e usa l'encoder così addestrato come punto
+di partenza per il compito a valle. La \cref{tab:ssl-famiglie} riassume le famiglie principali
+nel contesto di questa tesi. La sfida comune a tutti i metodi che confrontano due viste della
+stessa immagine è il \emph{collasso}: la soluzione banale in cui la rete produce lo stesso
+output per ogni ingresso.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Famiglie di metodi auto-supervisionati]{Famiglie di metodi di apprendimento
+    auto-supervisionato per immagini e meccanismo con cui ciascuna evita il collasso.}
+  \label{tab:ssl-famiglie}
+  \begin{tabular}{|l|p{3.1cm}|p{3.7cm}|l|}
+    \hline
+    \textbf{Famiglia} & \textbf{Compito} & \textbf{Contro il collasso} & \textbf{Esempi} \\
+    \hline
+    Contrastiva & distinguere viste della stessa immagine da quelle di altre &
+      esempi negativi (batch o coda) & \cite{chen2020simclr,he2020moco} \\
+    \hline
+    Clustering & predire l'assegnazione a prototipi di un'altra vista &
+      vincolo di equipartizione & \cite{caron2020swav} \\
+    \hline
+    Non contrastiva & predire la rappresentazione di un'altra vista &
+      asimmetria: predittore e \emph{stop-gradient}, teacher EMA & \cite{grill2020byol,chen2021simsiam} \\
+    \hline
+    Auto-distillazione & lo student imita la distribuzione del teacher &
+      \emph{centering} e \emph{sharpening} dell'output del teacher, teacher EMA &
+      \cite{caron2021dino,li2022esvit} \\
+    \hline
+    \emph{Bag of visual words} & ricostruire l'istogramma di parole visive del teacher &
+      vocabolario aggiornato online, teacher EMA & \cite{gidaris2021obow} \\
+    \hline
+    Ricostruzione mascherata & ricostruire le porzioni mascherate &
+      compito generativo, nessuna coppia di viste & \cite{he2022mae,cong2022satmae} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+L'auto-distillazione discende dalla distillazione della conoscenza di Hinton et
+al.~\cite{hinton2015distilling,gou2021kdsurvey}. Il teacher non è più una rete pre-addestrata
+più grande, ma una media mobile esponenziale dei pesi dello student, come nel \emph{mean
+teacher}~\cite{tarvainen2017meanteacher} e nella media di Polyak~\cite{polyak1992averaging}.
+DINO~\cite{caron2021dino} combina questa idea con un'augmentation \emph{multi-crop} (due viste
+globali per il teacher, viste globali e locali per lo student) e con la coppia
+\emph{centering}/\emph{sharpening}. È stato proposto per i Vision Transformer, ma funziona anche
+con encoder ResNet. Le versioni successive, come DINOv2~\cite{oquab2024dinov2}, ne hanno
+confermato la scalabilità a grandi collezioni di immagini.
+
+Nel telerilevamento l'SSL è motivato proprio dalla scarsità di etichette~\cite{wang2022ssl_rs}.
+Metodi specifici sfruttano la dimensione temporale (SeCo~\cite{manas2021seco}), la
+geolocalizzazione (GASSL~\cite{ayush2021gassl}) o la ricostruzione mascherata di immagini
+multispettrali (SatMAE~\cite{cong2022satmae}). MARE~\cite{marsocci2021mare} ha applicato OBoW
+alla \maresunet{} su Vaihingen e ha osservato che le augmentation cromatiche forti, utili su
+ImageNet, non aiutano necessariamente sulle immagini aeree. È l'osservazione all'origine della
+\RQ{4}.
+
+\section{La tesi del 2022}
+\label{sec:tesi-2022}
+
+La tesi del 2022~\cite{campana2022tesi} ha studiato una griglia di $2\times2\times2$
+configurazioni: architettura (\maresunet{}, \maresunetvq{}), encoder (ResNet-18, ResNet-34) e
+pre-addestramento (ImageNet supervisionato, DINO su Potsdam). Le scelte sperimentali principali
+erano le seguenti.
+
+\begin{itemize}
+  \item \textbf{Dati}: Potsdam, ritagli di $256\times256$ non sovrapposti. Erano state rimosse
+  dieci aree giudicate troppo omogenee (\tile{2\_10}, \tile{2\_11}, \tile{2\_12}, \tile{2\_13},
+  \tile{2\_14}, \tile{3\_10}, \tile{6\_7}, \tile{6\_13}, \tile{7\_13}, \tile{7\_9}); delle 28
+  rimanenti, 22 erano usate per il training e 6 per la validation (circa \num{11000} ritagli di
+  training).
+  \item \textbf{Addestramento}: Adam, learning rate $10^{-3}$, StepLR (passo 15, $\gamma=0{,}4$),
+  100 epoche, batch 32, nessuna augmentation in fine-tuning.
+  \item \textbf{Pre-addestramento}: DINO con scheduler coseno, \emph{weight decay} da 0,04 a 0,4,
+  $\tau_s=0{,}1$ e $\tau_t$ da 0,04 a 0,07.
+\end{itemize}
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Risultati di test della tesi del 2022]{Risultati di test riportati nella tesi del
+    2022 su Potsdam (tab.~4.5 dell'originale), con il protocollo di allora. In grassetto il
+    valore migliore di ogni colonna.}
+  \label{tab:risultati-2022}
+  \begin{tabular}{|l|l|l|c|c|c|}
+    \hline
+    \textbf{Modello} & \textbf{Encoder} & \textbf{Pre-addestr.} & \textbf{OA} & \textbf{mF1} & \textbf{mIoU} \\
+    \hline
+    \maresunet{}   & ResNet-18 & ImageNet & 0,791 & \textbf{0,722} & \textbf{0,604} \\
+    \maresunet{}   & ResNet-34 & ImageNet & \textbf{0,791} & 0,722 & 0,604 \\
+    \maresunet{}   & ResNet-18 & DINO     & 0,741 & 0,657 & 0,530 \\
+    \maresunet{}   & ResNet-34 & DINO     & 0,739 & 0,653 & 0,525 \\
+    \maresunetvq{} & ResNet-18 & ImageNet & 0,750 & 0,668 & 0,543 \\
+    \maresunetvq{} & ResNet-34 & ImageNet & 0,744 & 0,660 & 0,534 \\
+    \maresunetvq{} & ResNet-18 & DINO     & 0,702 & 0,593 & 0,465 \\
+    \maresunetvq{} & ResNet-34 & DINO     & 0,703 & 0,595 & 0,467 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+I risultati (\cref{tab:risultati-2022}) indicavano che la quantizzazione e il pre-addestramento
+DINO peggioravano tutte le metriche e che i loro effetti si sommavano. ResNet-18 e ResNet-34
+risultavano equivalenti. Il clutter era la classe peggiore (IoU $\approx 0{,}15$) e alberi e
+vegetazione bassa si confondevano. Le metriche di validation (mIoU $\approx 0{,}96$) erano
+molto più alte di quelle di test ($\approx 0{,}60$). La tesi attribuiva il divario
+all'overfitting e la sconfitta di DINO alla scarsità di dati di pre-addestramento (circa
+\num{11000} ritagli contro i milioni di immagini di ImageNet).
+
+\section{Lettura critica}
+\label{sec:lettura-critica}
+
+Il confronto tra il testo, il codice originale e i numeri riportati fa emergere diversi
+fattori, \emph{alternativi} alle spiegazioni proposte, che possono aver prodotto il risultato
+negativo (\cref{tab:lettura-critica}). Il punto per questo lavoro è che le ipotesi di ricerca
+\textbf{non sono state confutate in modo conclusivo}.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Osservazioni della tesi del 2022 e fattori alternativi]{Osservazioni della tesi del
+    2022, spiegazioni proposte allora e fattori alternativi individuati nel codice e nel
+    protocollo.}
+  \label{tab:lettura-critica}
+  \begin{tabular}{|p{2.6cm}|p{2.6cm}|p{7.2cm}|}
+    \hline
+    \textbf{Osservazione} & \textbf{Spiegazione proposta} & \textbf{Fattore alternativo} \\
+    \hline
+    Clutter quasi mai riconosciuto & eterogeneità della classe &
+      La perdita escludeva l'indice 0, che corrispondeva proprio al clutter: per quella classe
+      il modello riceveva solo gradienti che ne abbassavano il logit
+      (\cref{prop:classe-esclusa}). \\
+    \hline
+    Validation $\gg$ test & overfitting &
+      L'overfitting si manifesta come training $\gg$ validation, non validation $\gg$ test. Un
+      salto da 0,96 a 0,60 suggerisce una validation non indipendente (ritagli sovrapposti o
+      split non disgiunti per area, \cite{kaufman2012leakage}) o metriche calcolate in modo
+      diverso (media per batch, \cref{sec:metriche}). \\
+    \hline
+    DINO $<$ ImageNet & dati di pre-addestramento insufficienti &
+      L'implementazione si discostava da DINO: nessuna \emph{projection head}, softmax
+      calcolata sull'intero batch appiattito (le distribuzioni dei campioni si mescolano),
+      viste locali a 224 invece che a 96 pixel, temperatura del teacher fissa, nessuno schedule
+      del \emph{weight decay}, teacher non inizializzato come copia dello student. \\
+    \hline
+    VQ peggiora & la quantizzazione non aiuta &
+      Il codebook quantizzava solo il collo di bottiglia, aggirato dalle connessioni di salto
+      (\cref{prop:aggiramento}). Lo stato EMA veniva ricreato a ogni passo. Un encoder
+      condiviso per errore tra istanze del modello faceva sì che congelare il teacher
+      congelasse anche lo student. \\
+    \hline
+    ResNet-18 $\approx$ ResNet-34 & basta il modello piccolo &
+      Nel codice disponibile non c'è una variante ResNet-34: il codice che ha prodotto le
+      tabelle non è con certezza quello conservato. \\
+    \hline
+  \end{tabular}
+\end{table}
+
+A questi fattori si aggiungono alcune scelte di protocollo che impediscono il confronto con la
+letteratura.
+
+\begin{itemize}
+  \item \textbf{Split non standard}: quattro delle aree rimosse (\tile{2\_13}, \tile{2\_14},
+  \tile{6\_13}, \tile{7\_13}) sono tile di \emph{test} nello split più usato, e il testo non
+  descrive da dove provengano i \enquote{Test Scores}.
+  \item \textbf{Ingressi non normalizzati} con le statistiche di ImageNet, pur partendo da
+  pesi ImageNet.
+  \item \textbf{Batch di training ordinati} (nessun rimescolamento), quindi spazialmente
+  correlati.
+  \item \textbf{Una sola esecuzione per configurazione}, senza seed: differenze di uno o due
+  punti non sono distinguibili dalla variabilità tra esecuzioni~\cite{bouthillier2021variance}.
+\end{itemize}
+
+\section{Implicazioni per questo lavoro}
+\label{sec:implicazioni}
+
+La \cref{tab:correzioni} riassume come ciascun problema viene affrontato nella nuova
+implementazione e dove la scelta è discussa. Le correzioni non cambiano le domande di ricerca:
+le rendono rispondibili.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Problemi del protocollo 2022 e correzioni adottate]{Problemi del protocollo 2022 e
+    correzioni adottate in questo lavoro.}
+  \label{tab:correzioni}
+  \begin{tabular}{|p{4.4cm}|p{6.0cm}|c|}
+    \hline
+    \textbf{Problema} & \textbf{Correzione} & \textbf{Dove} \\
+    \hline
+    Clutter escluso dalla perdita & si ignora solo il valore 255 (pixel senza etichetta) & \cref{sec:formulazione} \\
+    \hline
+    Metriche mediate per batch & matrice di confusione globale sull'intero split & \cref{sec:metriche} \\
+    \hline
+    Validation non indipendente & split per tile intere; validation su tile escluse dal training & \cref{sec:split} \\
+    \hline
+    Split non standard & split di riferimento della letteratura; protocollo 2022 mantenuto solo per il confronto & \cref{sec:split} \\
+    \hline
+    Valutazione su ritagli & finestra scorrevole su tile intere, etichette piene ed \emph{eroded} & \cref{sec:finestra} \\
+    \hline
+    DINO non fedele & head di proiezione, perdita per campione, multi-crop $2\times224 + 6\times96$, schedule completi & \cref{sec:dino} \\
+    \hline
+    Codebook fragile & EMA in variabili persistenti, inizializzazione dai dati, riavvio dei codici morti, monitoraggio della perplexity & \cref{sec:vq} \\
+    \hline
+    Collo di bottiglia aggirato & quantizzazione opzionale anche delle connessioni di salto & \cref{sec:vq-aggiramento} \\
+    \hline
+    Normalizzazione assente & normalizzazione ImageNet come primo strato del modello & \cref{sec:addestramento} \\
+    \hline
+    Un'esecuzione, nessun seed & tre seed per configurazione, media $\pm$ deviazione standard & \cref{sec:statistica} \\
+    \hline
+  \end{tabular}
+\end{table}

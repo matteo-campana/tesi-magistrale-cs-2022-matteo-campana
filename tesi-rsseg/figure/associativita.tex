@@ -1,0 +1,28 @@
+% Ordine dei prodotti: (Q K^T) V costa O(N^2 d), Q (K^T V) costa O(N d C).
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize]
+  \tikzset{mat/.style={draw=SapRossoScuro, line width=0.5pt}}
+  % --- sinistra: (Q K^T) V -------------------------------------------------
+  \begin{scope}
+    \draw[mat, fill=SapRossoChiaro] (0,0) rectangle (4,24);      \node at (2,-3) {$Q$};
+    \node at (6,12) {$\cdot$};
+    \draw[mat, fill=SapRossoChiaro] (8,20) rectangle (32,24);    \node at (20,17) {$K\T$};
+    \node at (36,12) {$=$};
+    \draw[mat, fill=SapRossoTenue] (40,0) rectangle (64,24);     \node at (52,12) {$N\times N$};
+    \node at (68,12) {$\cdot$};
+    \draw[mat, fill=SapGrigioChiaro, draw=SapGrigio] (72,0) rectangle (78,24); \node at (75,-3) {$V$};
+    \node[text=SapRossoScuro, font=\footnotesize\bfseries] at (39,31) {$(QK\T)\,V$: memoria e calcolo $\mathcal{O}(N^2)$};
+  \end{scope}
+  % --- destra: Q (K^T V) -----------------------------------------------------
+  \begin{scope}[xshift=92mm]
+    \draw[mat, fill=SapRossoChiaro] (0,20) rectangle (24,24);     \node at (12,17) {$\hat K\T$};
+    \node at (28,12) {$\cdot$};
+    \draw[mat, fill=SapGrigioChiaro, draw=SapGrigio] (32,0) rectangle (38,24); \node at (35,-3) {$V$};
+    \node at (42,12) {$=$};
+    \draw[mat, fill=SapRossoTenue] (46,18) rectangle (52,24);   \node[align=center] at (49,13) {$d_k\times C$};
+    \node at (57,12) {$\Rightarrow$};
+    \draw[mat, fill=SapRossoChiaro] (62,0) rectangle (66,24);   \node at (64,-3) {$\hat Q$};
+    \node at (69,12) {$\cdot$};
+    \draw[mat, fill=SapRossoTenue] (72,18) rectangle (78,24);
+    \node[text=SapRossoScuro, font=\footnotesize\bfseries] at (39,31) {$\hat Q\,(\hat K\T V)$: memoria e calcolo $\mathcal{O}(N)$};
+  \end{scope}
+\end{tikzpicture}

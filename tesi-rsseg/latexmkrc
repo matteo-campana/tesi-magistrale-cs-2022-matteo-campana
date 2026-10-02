@@ -1,0 +1,6 @@
+# latexmk: pdflatex + bibtex (stile sapthesis-it.bst nella cartella)
+$pdf_mode = 1;
+$pdflatex = 'pdflatex -interaction=nonstopmode -halt-on-error -file-line-error %O %S';
+$bibtex_use = 2;
+@default_files = ('main.tex');
+$out_dir = 'build';

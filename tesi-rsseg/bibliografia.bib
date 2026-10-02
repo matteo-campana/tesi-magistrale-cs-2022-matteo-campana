@@ -1,0 +1,613 @@
+% =====================================================================
+%  Bibliografia della tesi (BibTeX, stile sapthesis-it.bst)
+%  Lo stile mette i titoli in minuscolo dopo la prima lettera: gli acronimi
+%  e i nomi propri vanno protetti con le graffe, ad es. {ISPRS}, {U-Net}.
+% =====================================================================
+
+% ---------------------------------------------------------------------
+%  Lavoro di partenza
+% ---------------------------------------------------------------------
+
+@mastersthesis{campana2022tesi,
+  author  = {Campana, Matteo},
+  title   = {Semantic Segmentation for Remote Sensing Images},
+  school  = {Sapienza Universit{\`a} di Roma},
+  year    = {2022},
+  note    = {Relatore Prof. A. Uncini, correlatori Dr. S. Scardapane e Dr. V. Marsocci},
+}
+
+@article{marsocci2021mare,
+  author  = {Marsocci, Valerio and Scardapane, Simone and Komodakis, Nikos},
+  title   = {{MARE}: Self-Supervised Multi-Attention {REsu-Net} for Semantic Segmentation in Remote Sensing},
+  journal = {Remote Sensing},
+  volume  = {13},
+  number  = {16},
+  pages   = {3275},
+  year    = {2021},
+  doi     = {10.3390/rs13163275},
+}
+
+@article{li2022maresunet,
+  author  = {Li, Rui and Zheng, Shunyi and Duan, Chenxi and Su, Jianlin and Zhang, Ce},
+  title   = {Multistage Attention {ResU-Net} for Semantic Segmentation of Fine-Resolution Remote Sensing Images},
+  journal = {IEEE Geoscience and Remote Sensing Letters},
+  volume  = {19},
+  pages   = {1--5},
+  year    = {2022},
+  doi     = {10.1109/LGRS.2021.3063381},
+}
+
+@misc{li2020lam,
+  author        = {Li, Rui and Su, Jianlin and Duan, Chenxi and Zheng, Shunyi},
+  title         = {Linear Attention Mechanism: An Efficient Attention for Semantic Segmentation},
+  year          = {2020},
+  eprint        = {2007.14902},
+  archiveprefix = {arXiv},
+}
+
+% ---------------------------------------------------------------------
+%  Reti convoluzionali e segmentazione semantica
+% ---------------------------------------------------------------------
+
+@book{goodfellow2016deep,
+  author    = {Goodfellow, Ian and Bengio, Yoshua and Courville, Aaron},
+  title     = {Deep Learning},
+  publisher = {MIT Press},
+  year      = {2016},
+}
+
+@book{bishop2006pattern,
+  author    = {Bishop, Christopher M.},
+  title     = {Pattern Recognition and Machine Learning},
+  publisher = {Springer},
+  year      = {2006},
+}
+
+@inproceedings{he2016resnet,
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  title     = {Deep Residual Learning for Image Recognition},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {770--778},
+  year      = {2016},
+}
+
+@inproceedings{ioffe2015batchnorm,
+  author    = {Ioffe, Sergey and Szegedy, Christian},
+  title     = {Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift},
+  booktitle = {Proceedings of the 32nd International Conference on Machine Learning ({ICML})},
+  series    = {PMLR},
+  volume    = {37},
+  pages     = {448--456},
+  year      = {2015},
+}
+
+@inproceedings{deng2009imagenet,
+  author    = {Deng, Jia and Dong, Wei and Socher, Richard and Li, Li-Jia and Li, Kai and Fei-Fei, Li},
+  title     = {{ImageNet}: A Large-Scale Hierarchical Image Database},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {248--255},
+  year      = {2009},
+}
+
+@inproceedings{long2015fcn,
+  author    = {Long, Jonathan and Shelhamer, Evan and Darrell, Trevor},
+  title     = {Fully Convolutional Networks for Semantic Segmentation},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {3431--3440},
+  year      = {2015},
+}
+
+@inproceedings{ronneberger2015unet,
+  author    = {Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
+  title     = {{U-Net}: Convolutional Networks for Biomedical Image Segmentation},
+  booktitle = {Medical Image Computing and Computer-Assisted Intervention ({MICCAI})},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9351},
+  pages     = {234--241},
+  publisher = {Springer},
+  year      = {2015},
+}
+
+@article{chen2018deeplab,
+  author  = {Chen, Liang-Chieh and Papandreou, George and Kokkinos, Iasonas and Murphy, Kevin and Yuille, Alan L.},
+  title   = {{DeepLab}: Semantic Image Segmentation with Deep Convolutional Nets, Atrous Convolution, and Fully Connected {CRFs}},
+  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  volume  = {40},
+  number  = {4},
+  pages   = {834--848},
+  year    = {2018},
+}
+
+@article{everingham2010pascal,
+  author  = {Everingham, Mark and Van Gool, Luc and Williams, Christopher K. I. and Winn, John and Zisserman, Andrew},
+  title   = {The {PASCAL} Visual Object Classes ({VOC}) Challenge},
+  journal = {International Journal of Computer Vision},
+  volume  = {88},
+  number  = {2},
+  pages   = {303--338},
+  year    = {2010},
+}
+
+% ---------------------------------------------------------------------
+%  Telerilevamento
+% ---------------------------------------------------------------------
+
+@article{cheng2016survey,
+  author  = {Cheng, Gong and Han, Junwei},
+  title   = {A Survey on Object Detection in Optical Remote Sensing Images},
+  journal = {ISPRS Journal of Photogrammetry and Remote Sensing},
+  volume  = {117},
+  pages   = {11--28},
+  year    = {2016},
+}
+
+@article{zhu2017dlrs,
+  author  = {Zhu, Xiao Xiang and Tuia, Devis and Mou, Lichao and Xia, Gui-Song and Zhang, Liangpei and Xu, Feng and Fraundorfer, Friedrich},
+  title   = {Deep Learning in Remote Sensing: A Comprehensive Review and List of Resources},
+  journal = {IEEE Geoscience and Remote Sensing Magazine},
+  volume  = {5},
+  number  = {4},
+  pages   = {8--36},
+  year    = {2017},
+}
+
+@article{rottensteiner2012isprs,
+  author  = {Rottensteiner, Franz and Sohn, Gunho and Jung, Jaewook and Gerke, Markus and Baillard, Caroline and Benitez, Sebastien and Breitkopf, Uwe},
+  title   = {The {ISPRS} Benchmark on Urban Object Classification and {3D} Building Reconstruction},
+  journal = {ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information Sciences},
+  volume  = {I-3},
+  pages   = {293--298},
+  year    = {2012},
+}
+
+@misc{isprs2dlabeling,
+  author       = {{ISPRS}},
+  title        = {{2D} Semantic Labeling Contest -- {P}otsdam and {V}aihingen},
+  howpublished = {International Society for Photogrammetry and Remote Sensing},
+  url          = {https://www.isprs.org/education/benchmarks/UrbanSemLab/},
+  lastchecked  = {2026-10-02},
+}
+
+@techreport{gerke2014stair,
+  author      = {Gerke, Markus},
+  title       = {Use of the Stair Vision Library within the {ISPRS} {2D} Semantic Labeling Benchmark ({V}aihingen)},
+  institution = {ITC, University of Twente},
+  year        = {2014},
+}
+
+@article{sherrah2016fcn,
+  author        = {Sherrah, Jamie},
+  title         = {Fully Convolutional Networks for Dense Semantic Labelling of High-Resolution Aerial Imagery},
+  journal       = {arXiv preprint},
+  year          = {2016},
+  eprint        = {1606.02585},
+  archiveprefix = {arXiv},
+}
+
+@article{marmanis2016ensemble,
+  author  = {Marmanis, Dimitrios and Wegner, Jan D. and Galliani, Silvano and Schindler, Konrad and Datcu, Mihai and Stilla, Uwe},
+  title   = {Semantic Segmentation of Aerial Images with an Ensemble of {CNNs}},
+  journal = {ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information Sciences},
+  volume  = {III-3},
+  pages   = {473--480},
+  year    = {2016},
+}
+
+@article{audebert2018beyond,
+  author  = {Audebert, Nicolas and Le Saux, Bertrand and Lef{\`e}vre, S{\'e}bastien},
+  title   = {Beyond {RGB}: Very High Resolution Urban Remote Sensing with Multimodal Deep Networks},
+  journal = {ISPRS Journal of Photogrammetry and Remote Sensing},
+  volume  = {140},
+  pages   = {20--32},
+  year    = {2018},
+}
+
+@article{wang2022unetformer,
+  author  = {Wang, Libo and Li, Rui and Zhang, Ce and Fang, Shenghui and Duan, Chenxi and Meng, Xiaoliang and Atkinson, Peter M.},
+  title   = {{UNetFormer}: A {UNet}-like Transformer for Efficient Semantic Segmentation of Remote Sensing Urban Scene Imagery},
+  journal = {ISPRS Journal of Photogrammetry and Remote Sensing},
+  volume  = {190},
+  pages   = {196--214},
+  year    = {2022},
+}
+
+@misc{mmseg2020,
+  author       = {{MMSegmentation Contributors}},
+  title        = {{MMSegmentation}: {OpenMMLab} Semantic Segmentation Toolbox and Benchmark},
+  howpublished = {GitHub},
+  url          = {https://github.com/open-mmlab/mmsegmentation},
+  year         = {2020},
+}
+
+% ---------------------------------------------------------------------
+%  Attenzione e transformer
+% ---------------------------------------------------------------------
+
+@inproceedings{vaswani2017attention,
+  author    = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  title     = {Attention is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {30},
+  year      = {2017},
+}
+
+@inproceedings{wang2018nonlocal,
+  author    = {Wang, Xiaolong and Girshick, Ross and Gupta, Abhinav and He, Kaiming},
+  title     = {Non-Local Neural Networks},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {7794--7803},
+  year      = {2018},
+}
+
+@inproceedings{fu2019danet,
+  author    = {Fu, Jun and Liu, Jing and Tian, Haijie and Li, Yong and Bao, Yongjun and Fang, Zhiwei and Lu, Hanqing},
+  title     = {Dual Attention Network for Scene Segmentation},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {3146--3154},
+  year      = {2019},
+}
+
+@inproceedings{katharopoulos2020linear,
+  author    = {Katharopoulos, Angelos and Vyas, Apoorv and Pappas, Nikolaos and Fleuret, Fran{\c{c}}ois},
+  title     = {Transformers are {RNNs}: Fast Autoregressive Transformers with Linear Attention},
+  booktitle = {Proceedings of the 37th International Conference on Machine Learning ({ICML})},
+  series    = {PMLR},
+  volume    = {119},
+  pages     = {5156--5165},
+  year      = {2020},
+}
+
+@inproceedings{dosovitskiy2021vit,
+  author    = {Dosovitskiy, Alexey and Beyer, Lucas and Kolesnikov, Alexander and Weissenborn, Dirk and Zhai, Xiaohua and Unterthiner, Thomas and Dehghani, Mostafa and Minderer, Matthias and Heigold, Georg and Gelly, Sylvain and Uszkoreit, Jakob and Houlsby, Neil},
+  title     = {An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2021},
+}
+
+@inproceedings{liu2021swin,
+  author    = {Liu, Ze and Lin, Yutong and Cao, Yue and Hu, Han and Wei, Yixuan and Zhang, Zheng and Lin, Stephen and Guo, Baining},
+  title     = {Swin Transformer: Hierarchical Vision Transformer using Shifted Windows},
+  booktitle = {Proceedings of the {IEEE/CVF} International Conference on Computer Vision ({ICCV})},
+  pages     = {10012--10022},
+  year      = {2021},
+}
+
+@inproceedings{xie2021segformer,
+  author    = {Xie, Enze and Wang, Wenhai and Yu, Zhiding and Anandkumar, Anima and Alvarez, Jose M. and Luo, Ping},
+  title     = {{SegFormer}: Simple and Efficient Design for Semantic Segmentation with Transformers},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {34},
+  pages     = {12077--12090},
+  year      = {2021},
+}
+
+@inproceedings{li2022vitdet,
+  author    = {Li, Yanghao and Mao, Hanzi and Girshick, Ross and He, Kaiming},
+  title     = {Exploring Plain Vision Transformer Backbones for Object Detection},
+  booktitle = {Computer Vision -- {ECCV} 2022},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {13669},
+  pages     = {280--296},
+  publisher = {Springer},
+  year      = {2022},
+}
+
+@inproceedings{touvron2021deit,
+  author    = {Touvron, Hugo and Cord, Matthieu and Douze, Matthijs and Massa, Francisco and Sablayrolles, Alexandre and J{\'e}gou, Herv{\'e}},
+  title     = {Training Data-Efficient Image Transformers \& Distillation through Attention},
+  booktitle = {Proceedings of the 38th International Conference on Machine Learning ({ICML})},
+  series    = {PMLR},
+  volume    = {139},
+  pages     = {10347--10357},
+  year      = {2021},
+}
+
+% ---------------------------------------------------------------------
+%  Rappresentazioni discrete e modelli generativi
+% ---------------------------------------------------------------------
+
+@inproceedings{kingma2014vae,
+  author    = {Kingma, Diederik P. and Welling, Max},
+  title     = {Auto-Encoding Variational {B}ayes},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2014},
+}
+
+@inproceedings{vandenoord2017vqvae,
+  author    = {van den Oord, A{\"a}ron and Vinyals, Oriol and Kavukcuoglu, Koray},
+  title     = {Neural Discrete Representation Learning},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {30},
+  year      = {2017},
+}
+
+@inproceedings{razavi2019vqvae2,
+  author    = {Razavi, Ali and van den Oord, A{\"a}ron and Vinyals, Oriol},
+  title     = {Generating Diverse High-Fidelity Images with {VQ-VAE-2}},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {32},
+  year      = {2019},
+}
+
+@inproceedings{esser2021taming,
+  author    = {Esser, Patrick and Rombach, Robin and Ommer, Bj{\"o}rn},
+  title     = {Taming Transformers for High-Resolution Image Synthesis},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {12873--12883},
+  year      = {2021},
+}
+
+@article{bengio2013straight,
+  author        = {Bengio, Yoshua and L{\'e}onard, Nicholas and Courville, Aaron},
+  title         = {Estimating or Propagating Gradients Through Stochastic Neurons for Conditional Computation},
+  journal       = {arXiv preprint},
+  year          = {2013},
+  eprint        = {1308.3432},
+  archiveprefix = {arXiv},
+}
+
+@inproceedings{lancucki2020robust,
+  author    = {{\L}a{\'n}cucki, Adrian and Chorowski, Jan and Sanchez, Guillaume and Marxer, Ricard and Chen, Nanxin and Dolfing, Hans J. G. A. and Khurana, Sameer and Alum{\"a}e, Tanel and Laurent, Antoine},
+  title     = {Robust Training of Vector Quantized Bottleneck Models},
+  booktitle = {International Joint Conference on Neural Networks ({IJCNN})},
+  year      = {2020},
+}
+
+@article{tishby2000ib,
+  author        = {Tishby, Naftali and Pereira, Fernando C. and Bialek, William},
+  title         = {The Information Bottleneck Method},
+  journal       = {arXiv preprint},
+  year          = {2000},
+  eprint        = {physics/0004057},
+  archiveprefix = {arXiv},
+}
+
+@article{lloyd1982kmeans,
+  author  = {Lloyd, Stuart P.},
+  title   = {Least Squares Quantization in {PCM}},
+  journal = {IEEE Transactions on Information Theory},
+  volume  = {28},
+  number  = {2},
+  pages   = {129--137},
+  year    = {1982},
+}
+
+% ---------------------------------------------------------------------
+%  Apprendimento auto-supervisionato e distillazione
+% ---------------------------------------------------------------------
+
+@article{hinton2015distilling,
+  author        = {Hinton, Geoffrey and Vinyals, Oriol and Dean, Jeff},
+  title         = {Distilling the Knowledge in a Neural Network},
+  journal       = {arXiv preprint},
+  year          = {2015},
+  eprint        = {1503.02531},
+  archiveprefix = {arXiv},
+}
+
+@article{gou2021kdsurvey,
+  author  = {Gou, Jianping and Yu, Baosheng and Maybank, Stephen J. and Tao, Dacheng},
+  title   = {Knowledge Distillation: A Survey},
+  journal = {International Journal of Computer Vision},
+  volume  = {129},
+  pages   = {1789--1819},
+  year    = {2021},
+}
+
+@inproceedings{tarvainen2017meanteacher,
+  author    = {Tarvainen, Antti and Valpola, Harri},
+  title     = {Mean Teachers are Better Role Models: Weight-Averaged Consistency Targets Improve Semi-Supervised Deep Learning Results},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {30},
+  year      = {2017},
+}
+
+@article{polyak1992averaging,
+  author  = {Polyak, Boris T. and Juditsky, Anatoli B.},
+  title   = {Acceleration of Stochastic Approximation by Averaging},
+  journal = {SIAM Journal on Control and Optimization},
+  volume  = {30},
+  number  = {4},
+  pages   = {838--855},
+  year    = {1992},
+}
+
+@inproceedings{chen2020simclr,
+  author    = {Chen, Ting and Kornblith, Simon and Norouzi, Mohammad and Hinton, Geoffrey},
+  title     = {A Simple Framework for Contrastive Learning of Visual Representations},
+  booktitle = {Proceedings of the 37th International Conference on Machine Learning ({ICML})},
+  series    = {PMLR},
+  volume    = {119},
+  pages     = {1597--1607},
+  year      = {2020},
+}
+
+@inproceedings{he2020moco,
+  author    = {He, Kaiming and Fan, Haoqi and Wu, Yuxin and Xie, Saining and Girshick, Ross},
+  title     = {Momentum Contrast for Unsupervised Visual Representation Learning},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {9729--9738},
+  year      = {2020},
+}
+
+@inproceedings{caron2020swav,
+  author    = {Caron, Mathilde and Misra, Ishan and Mairal, Julien and Goyal, Priya and Bojanowski, Piotr and Joulin, Armand},
+  title     = {Unsupervised Learning of Visual Features by Contrasting Cluster Assignments},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {33},
+  pages     = {9912--9924},
+  year      = {2020},
+}
+
+@inproceedings{grill2020byol,
+  author    = {Grill, Jean-Bastien and Strub, Florian and Altch{\'e}, Florent and Tallec, Corentin and Richemond, Pierre H. and Buchatskaya, Elena and Doersch, Carl and Pires, Bernardo Avila and Guo, Zhaohan Daniel and Azar, Mohammad Gheshlaghi and Piot, Bilal and Kavukcuoglu, Koray and Munos, R{\'e}mi and Valko, Michal},
+  title     = {Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {33},
+  pages     = {21271--21284},
+  year      = {2020},
+}
+
+@inproceedings{chen2021simsiam,
+  author    = {Chen, Xinlei and He, Kaiming},
+  title     = {Exploring Simple {S}iamese Representation Learning},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {15750--15758},
+  year      = {2021},
+}
+
+@inproceedings{caron2021dino,
+  author    = {Caron, Mathilde and Touvron, Hugo and Misra, Ishan and J{\'e}gou, Herv{\'e} and Mairal, Julien and Bojanowski, Piotr and Joulin, Armand},
+  title     = {Emerging Properties in Self-Supervised Vision Transformers},
+  booktitle = {Proceedings of the {IEEE/CVF} International Conference on Computer Vision ({ICCV})},
+  pages     = {9650--9660},
+  year      = {2021},
+}
+
+@inproceedings{gidaris2021obow,
+  author    = {Gidaris, Spyros and Bursuc, Andrei and Puy, Gilles and Komodakis, Nikos and Cord, Matthieu and P{\'e}rez, Patrick},
+  title     = {{OBoW}: Online Bag-of-Visual-Words Generation for Self-Supervised Learning},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {6830--6840},
+  year      = {2021},
+}
+
+@inproceedings{li2022esvit,
+  author    = {Li, Chunyuan and Yang, Jianwei and Zhang, Pengchuan and Gao, Mei and Xiao, Bin and Dai, Xiyang and Yuan, Lu and Gao, Jianfeng},
+  title     = {Efficient Self-Supervised Vision Transformers for Representation Learning},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2022},
+}
+
+@article{wang2022ssl_rs,
+  author  = {Wang, Yi and Albrecht, Conrad M. and Ait Ali Braham, Nassim and Mou, Lichao and Zhu, Xiao Xiang},
+  title   = {Self-Supervised Learning in Remote Sensing: A Review},
+  journal = {IEEE Geoscience and Remote Sensing Magazine},
+  volume  = {10},
+  number  = {4},
+  pages   = {213--247},
+  year    = {2022},
+}
+
+@inproceedings{manas2021seco,
+  author    = {Ma{\~n}as, Oscar and Lacoste, Alexandre and Gir{\'o}-i-Nieto, Xavier and Vazquez, David and Rodr{\'i}guez, Pau},
+  title     = {Seasonal Contrast: Unsupervised Pre-Training from Uncurated Remote Sensing Data},
+  booktitle = {Proceedings of the {IEEE/CVF} International Conference on Computer Vision ({ICCV})},
+  pages     = {9414--9423},
+  year      = {2021},
+}
+
+@inproceedings{ayush2021gassl,
+  author    = {Ayush, Kumar and Uzkent, Burak and Meng, Chenlin and Tanmay, Kumar and Burke, Marshall and Lobell, David and Ermon, Stefano},
+  title     = {Geography-Aware Self-Supervised Learning},
+  booktitle = {Proceedings of the {IEEE/CVF} International Conference on Computer Vision ({ICCV})},
+  pages     = {10181--10190},
+  year      = {2021},
+}
+
+@inproceedings{cong2022satmae,
+  author    = {Cong, Yezhen and Khanna, Samar and Meng, Chenlin and Liu, Patrick and Rozi, Erik and He, Yutong and Burke, Marshall and Lobell, David B. and Ermon, Stefano},
+  title     = {{SatMAE}: Pre-training Transformers for Temporal and Multi-Spectral Satellite Imagery},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {35},
+  year      = {2022},
+}
+
+@inproceedings{he2022mae,
+  author    = {He, Kaiming and Chen, Xinlei and Xie, Saining and Li, Yanghao and Doll{\'a}r, Piotr and Girshick, Ross},
+  title     = {Masked Autoencoders Are Scalable Vision Learners},
+  booktitle = {Proceedings of the {IEEE/CVF} Conference on Computer Vision and Pattern Recognition ({CVPR})},
+  pages     = {16000--16009},
+  year      = {2022},
+}
+
+@article{oquab2024dinov2,
+  author  = {Oquab, Maxime and Darcet, Timoth{\'e}e and Moutakanni, Th{\'e}o and Vo, Huy V. and Szafraniec, Marc and Khalidov, Vasil and others},
+  title   = {{DINOv2}: Learning Robust Visual Features without Supervision},
+  journal = {Transactions on Machine Learning Research},
+  year    = {2024},
+}
+
+% ---------------------------------------------------------------------
+%  Ottimizzazione, metodologia sperimentale e strumenti
+% ---------------------------------------------------------------------
+
+@inproceedings{kingma2015adam,
+  author    = {Kingma, Diederik P. and Ba, Jimmy},
+  title     = {Adam: A Method for Stochastic Optimization},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2015},
+}
+
+@inproceedings{loshchilov2019adamw,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2019},
+}
+
+@inproceedings{micikevicius2018mixed,
+  author    = {Micikevicius, Paulius and Narang, Sharan and Alben, Jonah and Diamos, Gregory and Elsen, Erich and Garcia, David and Ginsburg, Boris and Houston, Michael and Kuchaiev, Oleksii and Venkatesh, Ganesh and Wu, Hao},
+  title     = {Mixed Precision Training},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2018},
+}
+
+@article{kaufman2012leakage,
+  author  = {Kaufman, Shachar and Rosset, Saharon and Perlich, Claudia and Stitelman, Ori},
+  title   = {Leakage in Data Mining: Formulation, Detection, and Avoidance},
+  journal = {ACM Transactions on Knowledge Discovery from Data},
+  volume  = {6},
+  number  = {4},
+  pages   = {15:1--15:21},
+  year    = {2012},
+}
+
+@inproceedings{bouthillier2021variance,
+  author    = {Bouthillier, Xavier and Delaunay, Pierre and Bronzi, Mirko and Trofimov, Assya and Nichyporuk, Brennan and Szeto, Justin and Sepah, Naz and Raff, Edward and Madan, Kanika and Voleti, Vikram and Ebrahimi Kahou, Samira and Michalski, Vincent and Serdyuk, Dmitriy and Arbel, Tal and Pal, Chris and Varoquaux, Ga{\"e}l and Vincent, Pascal},
+  title     = {Accounting for Variance in Machine Learning Benchmarks},
+  booktitle = {Proceedings of Machine Learning and Systems ({MLSys})},
+  volume    = {3},
+  year      = {2021},
+}
+
+@book{efron1993bootstrap,
+  author    = {Efron, Bradley and Tibshirani, Robert J.},
+  title     = {An Introduction to the Bootstrap},
+  publisher = {Chapman \& Hall/CRC},
+  year      = {1993},
+}
+
+@inproceedings{paszke2019pytorch,
+  author    = {Paszke, Adam and Gross, Sam and Massa, Francisco and Lerer, Adam and Bradbury, James and Chanan, Gregory and others},
+  title     = {{PyTorch}: An Imperative Style, High-Performance Deep Learning Library},
+  booktitle = {Advances in Neural Information Processing Systems ({NeurIPS})},
+  volume    = {32},
+  pages     = {8024--8035},
+  year      = {2019},
+}
+
+@misc{chollet2015keras,
+  author       = {Chollet, Fran{\c{c}}ois and others},
+  title        = {Keras},
+  howpublished = {\url{https://keras.io}},
+  year         = {2015},
+}
+
+@article{zaharia2018mlflow,
+  author  = {Zaharia, Matei and Chen, Andrew and Davidson, Aaron and Ghodsi, Ali and Hong, Sue Ann and Konwinski, Andy and Murching, Siddharth and Nykodym, Tomas and Ogilvie, Paul and Parkhe, Mani and Xie, Fen and Zumar, Corey},
+  title   = {Accelerating the Machine Learning Lifecycle with {MLflow}},
+  journal = {IEEE Data Engineering Bulletin},
+  volume  = {41},
+  number  = {4},
+  pages   = {39--45},
+  year    = {2018},
+}
+
+@book{soille2003morphology,
+  author    = {Soille, Pierre},
+  title     = {Morphological Image Analysis: Principles and Applications},
+  edition   = {2},
+  publisher = {Springer},
+  year      = {2003},
+}

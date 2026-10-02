@@ -1,0 +1,29 @@
+% Blocco di attenzione di MAResU-Net: conv 3x3, poi PAM lineare e CAM in parallelo,
+% somma e proiezione 1x1. Entrambi i rami sono residuali con guadagno inizializzato a 0.
+\begin{tikzpicture}[node distance=3.5mm and 6mm,
+    b/.style={blocco, fill=white, draw=SapGrigio},
+    somma/.style={circle, draw=SapRossoScuro, fill=white, inner sep=0pt, minimum size=4.2mm,
+                  font=\footnotesize},
+  ]
+  \node[dato] (x) {$\vect{X}_l$\\{\scriptsize $h\times w\times C$}};
+  \node[b, right=of x] (c3) {conv $3{\times}3$\\ReLU};
+  \node[attn, above right=2mm and 7mm of c3, minimum width=2.6cm] (pam)
+       {PAM lineare\\{\scriptsize $\vect{X}+\gamma\,\mathrm{LAM}(\vect{X})$}};
+  \node[attn, below right=2mm and 7mm of c3, minimum width=2.6cm] (cam)
+       {CAM\\{\scriptsize $\vect{X}+\beta\,\mathrm{CA}(\vect{X})$}};
+  \node[b, right=of pam] (p1) {drop\\conv $1{\times}1$};
+  \node[b, right=of cam] (c1) {drop\\conv $1{\times}1$};
+  \node[somma, right=12mm of $(p1)!0.5!(c1)$] (s) {$+$};
+  \node[b, right=of s] (o1) {drop\\conv $1{\times}1$};
+  \node[dato, right=of o1] (y) {$\vect{S}_l$};
+  \draw[flusso] (x) -- (c3);
+  \draw[flusso] (c3.east) -- ++(3mm,0) |- (pam.west);
+  \draw[flusso] (c3.east) -- ++(3mm,0) |- (cam.west);
+  \draw[flusso] (pam) -- (p1);
+  \draw[flusso] (cam) -- (c1);
+  \draw[flusso] (p1.east) -| (s.north);
+  \draw[flusso] (c1.east) -| (s.south);
+  \draw[flusso] (s) -- (o1);
+  \draw[flusso] (o1) -- (y);
+  \node[nota, below=1mm of cam] {$\gamma=\beta=0$ all'inizializzazione};
+\end{tikzpicture}

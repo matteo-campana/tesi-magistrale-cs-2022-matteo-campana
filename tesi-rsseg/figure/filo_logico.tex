@@ -1,0 +1,43 @@
+% Schema: dai problemi del dominio ai meccanismi studiati e alle domande di ricerca.
+\begin{tikzpicture}[
+    node distance=4mm and 9mm,
+    prob/.style={dato, text width=3.5cm, minimum height=10mm},
+    mecc/.style={attn, text width=3.4cm, minimum height=10mm},
+    domanda/.style={blocco, fill=white, draw=SapRosso, text width=2.6cm, minimum height=10mm},
+  ]
+  % Colonna 1: problemi
+  \node[prob] (p1) {Immagini molto grandi\\{\scriptsize $6000\times6000$ px, contesto ampio}};
+  \node[prob, below=of p1] (p2) {Variabilit\`a intra-classe alta,\\inter-classe bassa};
+  \node[prob, below=of p2] (p3) {Etichette scarse e costose};
+  \node[prob, below=of p3] (p4) {Ambiguit\`a spettrale\\{\scriptsize tetto vs strada, albero vs prato}};
+
+  % Colonna 2: meccanismi
+  \node[mecc, right=of p1] (m1) {Attenzione lineare\\{\scriptsize LAM, costo $\mathcal{O}(N)$}};
+  \node[mecc, right=of p2] (m2) {Bottleneck discreto\\{\scriptsize codebook VQ}};
+  \node[mecc, right=of p3] (m3) {Auto-distillazione\\{\scriptsize DINO su dati non etichettati}};
+  \node[mecc, right=of p4] (m4) {Altezza sul terreno\\{\scriptsize nDSM come 4\textordmasculine{} canale}};
+
+  % Colonna 3: domande di ricerca
+  \node[domanda, right=of m1] (r1) {\RQ{1}, \RQ{5}\\{\scriptsize contributo e costo}};
+  \node[domanda, right=of m2] (r2) {\RQ{2}\\{\scriptsize codebook sano?}};
+  \node[domanda, right=of m3] (r3) {\RQ{3}, \RQ{4}\\{\scriptsize poche etichette, augmentation}};
+  \node[domanda, right=of m4] (r4) {\RQ{6}\\{\scriptsize fusione precoce}};
+
+  \foreach \i in {1,...,4}{
+    \draw[flusso] (p\i) -- (m\i);
+    \draw[flusso] (m\i) -- (r\i);
+  }
+  % legami secondari
+  \draw[flusso, densely dotted] (p2.east) -- (m4.north west);
+  \draw[flusso, densely dotted] (p3.east) -- (m2.south west);
+
+  % Intestazioni
+  \node[nota, above=2mm of p1, font=\footnotesize\bfseries, text=SapRossoScuro] {Problema};
+  \node[nota, above=2mm of m1, font=\footnotesize\bfseries, text=SapRossoScuro] {Meccanismo};
+  \node[nota, above=2mm of r1, font=\footnotesize\bfseries, text=SapRossoScuro] {Domanda};
+
+  % Riquadro: estensioni rispetto al 2022
+  \begin{scope}[on background layer]
+    \node[gruppo, fit=(m4)(r4), label={[nota]below:estensione rispetto alla tesi del 2022}] {};
+  \end{scope}
+\end{tikzpicture}

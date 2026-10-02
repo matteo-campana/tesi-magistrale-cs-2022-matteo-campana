@@ -1,0 +1,128 @@
+% =====================================================================
+%  Capitolo 6 — Prospettive e struttura finale attesa
+%  Nessuna conclusione: gli esperimenti non sono ancora completi.
+% =====================================================================
+\chapter{Prospettive e lavoro futuro}
+\label{cap:prospettive}
+
+Gli esperimenti di questa tesi non sono ancora completi, quindi il capitolo \emph{non} trae
+conclusioni sulle domande di ricerca. Riassume invece lo stato del lavoro, elenca le attività
+rimanenti, discute le direzioni di ricerca aperte dal quadro teorico e fissa la struttura attesa
+del capitolo conclusivo.
+
+\section{Stato del lavoro}
+\label{sec:stato-lavoro}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption[Stato del lavoro]{Stato delle componenti del lavoro.}
+  \label{tab:stato-lavoro}
+  \begin{tabular}{|p{5.6cm}|l|}
+    \hline
+    \textbf{Componente} & \textbf{Stato} \\
+    \hline
+    Lettura critica della tesi del 2022 & completata (\cref{cap:premesse}) \\
+    Quadro teorico & completato (\cref{cap:teoria}) \\
+    Protocollo sperimentale & definito (\cref{cap:metodologia}) \\
+    Implementazione e test automatici & completati, 109 test \\
+    Preparazione di Potsdam, Vaihingen e pool di Toronto & completata \\
+    Benchmark di memoria su RTX 4060 & completato (\cref{tab:vram}) \\
+    Bootstrap per tile nel report & da implementare \\
+    Campagne di esperimenti & da eseguire (\cref{tab:stato-campagne}) \\
+    Analisi dei risultati e conclusioni & da scrivere \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\section{Attività rimanenti}
+\label{sec:attivita}
+
+L'ordine di esecuzione segue la dipendenza tra le domande e il costo delle campagne:
+
+\begin{enumerate}
+  \item \codice{thesis2022} e \codice{rq1\_attention}: fissano il riferimento e quantificano
+  l'effetto delle sole correzioni di protocollo (\cref{sec:exp-2022,sec:exp-rq1});
+  \item \codice{thesis\_grid}: pre-addestramenti DINO R18/R34 e griglia della tesi sul protocollo
+  standard, che alimenta \RQ{2} e il punto al 100\% della \RQ{3};
+  \item \codice{rq6\_ndsm} e \codice{vaihingen}: relativamente brevi, verificano la
+  generalizzazione su un secondo benchmark;
+  \item \codice{rq3\_low\_label} e \codice{rq4\_aerial}: le campagne più lunghe, che riusano i
+  pre-addestramenti già eseguiti;
+  \item \codice{rq5\_efficiency} completa e \codice{transformers}, valutando se escludere
+  ViT-B/16 (circa 30 minuti per epoca sulla GPU disponibile);
+  \item analisi statistica (seed appaiati e bootstrap), figure qualitative, sintesi.
+\end{enumerate}
+
+\Segnaposto{Aggiornare l'elenco con le date effettive di esecuzione e con eventuali campagne
+aggiunte o tolte.}
+
+\section{Prospettive di ricerca}
+\label{sec:prospettive-ricerca}
+
+Indipendentemente dall'esito delle campagne, il quadro teorico del \cref{cap:teoria} indica
+alcune direzioni che questa tesi non esplora fino in fondo.
+
+\paragraph{Auto-supervisione densa.}
+L'\cref{oss:globale-denso} osserva che la perdita di DINO agisce dopo una media globale, mentre
+la segmentazione è un compito denso. Una variante con perdita locale, che confronti le
+caratteristiche di regioni corrispondenti tra viste diverse, allineerebbe l'obiettivo di
+pre-addestramento al compito a valle. Lo stesso vale per la ricostruzione
+mascherata~\cite{he2022mae,cong2022satmae}, che opera per costruzione sulle singole porzioni
+dell'immagine.
+
+\paragraph{Diagnostica degli encoder pre-addestrati.}
+Una valutazione lineare o $k$-NN sull'encoder congelato separerebbe la qualità della
+rappresentazione dall'effetto del fine-tuning. L'informazione mutua~\eqref{eq:dino-mi}, stimata a
+ogni epoca, darebbe un criterio di arresto più informativo dell'entropia del solo teacher.
+
+\paragraph{Modelli di fondazione.}
+Encoder pre-addestrati su collezioni molto grandi e diverse, come DINOv2~\cite{oquab2024dinov2} o
+modelli specifici per il telerilevamento~\cite{wang2022ssl_rs}, sono un riferimento naturale per
+la \RQ{3}: dicono se il limite è nella quantità di dati di dominio o nell'obiettivo di
+pre-addestramento.
+
+\paragraph{Quantizzazione oltre il collo di bottiglia.}
+Se la \cref{prop:aggiramento} trova conferma empirica, la quantizzazione delle connessioni di
+salto, o una quantizzazione gerarchica come in VQ-VAE-2~\cite{razavi2019vqvae2}, è il modo per
+verificare davvero l'ipotesi di un vantaggio delle rappresentazioni discrete. I codici appresi
+potrebbero anche essere interpretati come \enquote{parole visive} del dominio aereo e confrontati
+con le classi.
+
+\paragraph{Attenzione efficiente.}
+L'\cref{oss:contrasto} suggerisce che il LAM aggreghi contesto globale con poca selettività.
+Nuclei di somiglianza più contrastati, ma ancora fattorizzabili
+come~\eqref{eq:attenzione-lineare-generale}, o attenzioni locali a finestra come in
+Swin~\cite{liu2021swin}, sono alternative con costo lineare da confrontare a parità di budget.
+
+\paragraph{Fusione multimodale e generalizzazione.}
+Oltre alla fusione precoce dell'nDSM, la fusione tardiva a due rami~\cite{audebert2018beyond} e il
+trasferimento tra dataset (Potsdam IR-R-G $\to$ Vaihingen, stesso falso colore) misurerebbero
+quanto i modelli generalizzano a città e sensori diversi.
+
+\paragraph{Efficienza e inferenza a bordo.}
+La motivazione energetica del 2022 resta valida. Quantizzazione dei pesi, distillazione verso
+encoder più piccoli~\cite{hinton2015distilling} e misure di energia per tile, oltre che di
+tempo, renderebbero la \RQ{5} direttamente utile per l'inferenza su piattaforme con risorse
+limitate.
+
+\section{Struttura attesa del capitolo conclusivo}
+\label{sec:struttura-conclusioni}
+
+A esperimenti completati, questo capitolo verrà sostituito da un capitolo di conclusioni con la
+struttura seguente.
+
+\begin{enumerate}
+  \item \textbf{Sintesi del lavoro}: problema, revisione del 2022, protocollo e implementazione.
+  \item \textbf{Risposte alle domande di ricerca}: per ciascuna, l'esito della
+  \cref{tab:exp-sintesi}, con l'entità dell'effetto, la sua variabilità e le condizioni in cui
+  vale.
+  \item \textbf{Confronto con la tesi del 2022}: quali conclusioni di allora reggono con il
+  protocollo corretto, quali cambiano e per quale motivo.
+  \item \textbf{Limiti}: una sola GPU e tre seed, due soli dataset urbani europei, pre-addestramento
+  limitato a DINO, valutazione di parte dei fattori solo su Potsdam.
+  \item \textbf{Sviluppi futuri}: le direzioni della \cref{sec:prospettive-ricerca} ordinate in
+  base ai risultati ottenuti.
+\end{enumerate}
+
+\Segnaposto{Scrivere le conclusioni solo dopo aver completato il \cref{cap:esperimenti}.}

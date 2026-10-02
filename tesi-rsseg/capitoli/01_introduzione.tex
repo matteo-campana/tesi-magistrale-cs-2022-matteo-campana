@@ -1,0 +1,176 @@
+% =====================================================================
+%  Capitolo 1 — Introduzione
+% =====================================================================
+\chapter{Introduzione}
+\label{cap:introduzione}
+
+\section{Contesto}
+\label{sec:contesto}
+
+Le immagini telerilevate ad altissima risoluzione (\emph{Very High Resolution}, VHR), riprese
+da aereo o da satellite con una distanza di campionamento al suolo (\emph{Ground Sampling
+Distance}, GSD) di pochi centimetri, sono oggi una fonte primaria di informazione per il
+monitoraggio delle aree urbane, la pianificazione dell'uso del suolo, la tutela ambientale e la
+gestione del traffico~\cite{zhu2017dlrs,cheng2016survey}. Per trasformare queste immagini in
+informazione utilizzabile occorre sapere \emph{che cosa} c'è in ogni punto della scena: è il
+compito della \emph{segmentazione semantica}, che assegna a ciascun pixel una classe scelta da un
+insieme fissato a priori.
+
+Rispetto alla classificazione di un'immagine intera o al rilevamento di oggetti con riquadri, la
+segmentazione semantica è una predizione \emph{densa}: per un'ortofoto di $6000\times6000$ pixel
+il modello produce $3{,}6\cdot10^{7}$ decisioni, che devono rispettare i contorni degli oggetti e
+rimanere coerenti su scala urbana. Dal 2015 il problema è affrontato con reti neurali
+convoluzionali completamente convoluzionali~\cite{long2015fcn} e con architetture
+encoder-decoder come U-Net~\cite{ronneberger2015unet}. Negli anni successivi queste architetture
+sono state arricchite con convoluzioni dilatate~\cite{chen2018deeplab}, meccanismi di
+attenzione~\cite{wang2018nonlocal,fu2019danet} e, più di recente, con encoder di tipo
+transformer~\cite{dosovitskiy2021vit,liu2021swin,xie2021segformer}.
+
+Il banco di prova di riferimento per la segmentazione di scene urbane aeree è il \emph{2D
+Semantic Labeling Contest} dell'ISPRS~\cite{rottensteiner2012isprs,isprs2dlabeling}, con i
+dataset \textbf{Potsdam} (ortofoto RGB a \SI{5}{\centi\meter}) e \textbf{Vaihingen} (falso colore
+IR-R-G a \SI{9}{\centi\meter}), annotati in sei classi: superfici impermeabili
+\ClasseBox{ClsImpervious}, edifici \ClasseBox{ClsBuilding}, vegetazione bassa
+\ClasseBox{ClsLowVeg}, alberi \ClasseBox{ClsTree}, auto \ClasseBox{ClsCar} e clutter
+\ClasseBox{ClsClutter}.
+
+\section{Le difficoltà del dominio}
+\label{sec:difficolta}
+
+Il telerilevamento urbano VHR combina quattro difficoltà, che motivano le scelte di questa tesi
+(\cref{fig:filo-logico}).
+
+\begin{description}[style=nextline, leftmargin=1.2em]
+  \item[Variabilità intra-classe alta e inter-classe bassa.] Gli edifici hanno materiali,
+  forme e colori molto diversi tra loro, mentre tetti, marciapiedi e strade in cemento possono
+  essere quasi indistinguibili nel solo spettro visibile. Lo stesso vale per alberi e
+  vegetazione bassa, che si distinguono soprattutto per l'altezza.
+  \item[Condizioni di ripresa.] Ombre degli edifici alti, foschia e differenze di
+  illuminazione alterano l'aspetto delle superfici e introducono confusioni sistematiche.
+  \item[Scarsità di etichette.] A differenza dei grandi dataset di immagini naturali, le
+  annotazioni pixel per pixel di immagini aeree sono poche, costose e richiedono esperti: due
+  delle collezioni ISPRS più usate contano 38 (Potsdam) e 33 (Vaihingen) aree annotate.
+  \item[Contesto ampio.] Classificare un pixel richiede di guardare l'oggetto e il suo intorno:
+  un'auto si riconosce dalla strada su cui si trova, un cortile dagli edifici che lo
+  circondano. Aggregare contesto su immagini grandi è però costoso. L'attenzione
+  \emph{dot-product} ha un costo quadratico nel numero di posizioni, già proibitivo su un
+  singolo ritaglio di $512\times512$ pixel (\cref{sec:attenzione-dot}).
+\end{description}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/filo_logico}}
+  \caption[Dai problemi del dominio alle domande di ricerca]{Dai problemi del dominio ai
+    meccanismi studiati e alle domande di ricerca. Le linee punteggiate indicano legami
+    secondari: l'altezza aiuta a separare classi spettralmente simili e la quantizzazione nasce
+    dall'idea di \emph{visual words} usata dal pre-addestramento OBoW.}
+  \label{fig:filo-logico}
+\end{figure}
+
+\section{Dalla tesi del 2022 a questo lavoro}
+\label{sec:da-2022}
+
+Questa tesi riprende il lavoro svolto nel 2022~\cite{campana2022tesi}, a sua volta continuazione
+di MARE~\cite{marsocci2021mare}. MARE ha mostrato che l'architettura
+\maresunet{}~\cite{li2022maresunet}, cioè un encoder ResNet~\cite{he2016resnet} e un decoder
+U-Net con un \emph{Linear Attention Mechanism}~(LAM)~\cite{li2020lam} nelle connessioni di
+salto, beneficia sul dataset Vaihingen di un pre-addestramento auto-supervisionato basato su
+\emph{bag of visual words}~(OBoW)~\cite{gidaris2021obow}. La tesi del 2022 ha esteso
+quell'idea in tre direzioni: un dataset più grande (Potsdam), un metodo di auto-distillazione
+più recente (DINO~\cite{caron2021dino}) e un collo di bottiglia esplicitamente discreto, con un
+codebook di quantizzazione vettoriale~\cite{vandenoord2017vqvae} ispirato al vocabolario di
+\emph{visual words} di OBoW.
+
+Il risultato sperimentale di allora è stato negativo per entrambe le estensioni: la
+configurazione migliore restava la \maresunet{} con encoder ResNet-18 pre-addestrato su
+ImageNet (mIoU di test $\approx 0{,}604$). Una revisione sistematica del protocollo e del codice
+originale (\cref{sec:lettura-critica}) mostra tuttavia che quel risultato \emph{non è
+conclusivo}. La classe clutter non riceveva gradiente, le metriche erano mediate per batch, la
+validation probabilmente non era indipendente dal training e il pre-addestramento si
+discostava da DINO in punti sostanziali. Le domande poste nel 2022 restano quindi aperte e
+meritano una risposta basata su un protocollo corretto.
+
+\section{Obiettivi}
+\label{sec:obiettivi}
+
+L'obiettivo della tesi è \textbf{rivalutare in modo riproducibile e confrontabile con la
+letteratura} il contributo di tre meccanismi (attenzione lineare, quantizzazione vettoriale e
+auto-distillazione) alla segmentazione semantica di immagini aeree urbane, ed estendere
+l'analisi all'uso dell'informazione altimetrica. In dettaglio:
+
+\begin{enumerate}
+  \item formalizzare i meccanismi studiati e derivarne le proprietà rilevanti per il dominio:
+  costo computazionale, capacità informativa del collo di bottiglia, modi di collasso
+  dell'auto-distillazione (\cref{cap:teoria});
+  \item definire un protocollo sperimentale che elimini i fattori confondenti individuati nel
+  lavoro del 2022 (\cref{cap:metodologia});
+  \item rispondere con più seed e intervalli di variabilità alle domande di ricerca della
+  \cref{sec:domande} (\cref{cap:esperimenti});
+  \item quantificare il compromesso tra accuratezza e costo su hardware consumer (una GPU da
+  \SI{8}{\giga\byte}), in linea con la motivazione energetica già presente nel 2022.
+\end{enumerate}
+
+\section{Domande di ricerca}
+\label{sec:domande}
+
+\begin{description}[style=nextline, leftmargin=1.2em]
+  \item[\RQ{1} -- Attenzione lineare.] Su Potsdam, con un protocollo standard, quanto rende
+  \maresunet{} rispetto a una rete con la stessa struttura ma connessioni di salto senza
+  attenzione, a parità di encoder?
+  \item[\RQ{2} -- Quantizzazione vettoriale.] Un collo di bottiglia quantizzato, con un codebook
+  \emph{sano} (perplexity alta, pochi codici inutilizzati), migliora la segmentazione? Conta dove
+  la quantizzazione viene applicata: solo al collo di bottiglia o anche alle connessioni di
+  salto?
+  \item[\RQ{3} -- Auto-distillazione e poche etichette.] Un pre-addestramento DINO fedele
+  all'originale, su immagini di dominio non etichettate, eguaglia o supera ImageNet? Come cambia
+  il confronto quando si usa solo l'1\%, il 10\% o il 25\% delle etichette?
+  \item[\RQ{4} -- Augmentation per immagini aeree.] Le trasformazioni cromatiche
+  \enquote{forti} di DINO sono adatte alle immagini aeree, o conviene una variante attenuata e
+  invariante alle rotazioni?
+  \item[\RQ{5} -- Efficienza.] Qual è il compromesso tra accuratezza e costo (parametri,
+  memoria, throughput) tra encoder ResNet-18, ResNet-34 e ResNet-50 e tra encoder
+  convoluzionali e transformer?
+  \item[\RQ{6} -- Altezza sul terreno.] L'nDSM come quarto canale di ingresso migliora la
+  segmentazione, in particolare per le coppie edifici/superfici impermeabili e alberi/vegetazione
+  bassa? Il risultato cambia se l'nDSM è quello ufficiale o quello stimato dal DSM?
+\end{description}
+
+Le domande da \RQ{1} a \RQ{5} riformulano le ipotesi del 2022. La \RQ{6} e il secondo benchmark
+(Vaihingen) sono estensioni introdotte in questo lavoro.
+
+\section{Contributi}
+\label{sec:contributi}
+
+\begin{itemize}
+  \item Una \textbf{lettura critica} della tesi del 2022 che separa le conclusioni giustificate
+  dai dati da quelle dovute a difetti di protocollo o di implementazione (\cref{cap:premesse}).
+  \item Una \textbf{trattazione teorica unificata} dei meccanismi studiati. Comprende la
+  derivazione del LAM come attenzione a nucleo con costo $\bigO{N}$ e una sua proprietà di
+  \enquote{basso contrasto}, l'interpretazione dell'aggiornamento EMA del codebook come K-means
+  online, l'analisi dell'aggiramento del collo di bottiglia da parte delle connessioni di salto,
+  i modi di collasso dell'auto-distillazione e l'effetto di una classe esclusa dalla perdita
+  (\cref{cap:teoria}).
+  \item Un \textbf{protocollo sperimentale} con split standard per tile intere, valutazione su
+  tile complete con etichette piene ed \emph{eroded}, matrice di confusione globale, più seed e
+  un regime a poche etichette con budget di iterazioni costante (\cref{cap:metodologia}).
+  \item Un'\textbf{implementazione nuova e verificata} (pacchetto \rsseg{}, Keras~3 su backend
+  PyTorch, tracciamento con MLflow). Comprende campagne di esperimenti riprendibili, 109 test
+  automatici e la verifica di equivalenza numerica con i modelli di riferimento
+  (\cref{sec:implementazione}).
+  \item I \textbf{risultati sperimentali} che rispondono alle domande di ricerca
+  (\cref{cap:esperimenti}).
+  \Segnaposto{Riassumere i risultati principali in una riga per domanda di ricerca, quando
+  disponibili.}
+\end{itemize}
+
+\section{Struttura della tesi}
+\label{sec:struttura}
+
+Il \cref{cap:premesse} inquadra il lavoro nello stato dell'arte e analizza criticamente la tesi
+del 2022. Il \cref{cap:teoria} sviluppa il quadro teorico: formulazione del problema, encoder-decoder
+residuali, attenzione lineare, quantizzazione vettoriale, auto-distillazione, fusione
+dell'nDSM, metriche e inferenza su tile intere. Il \cref{cap:metodologia} descrive dati,
+protocolli, configurazioni di addestramento, implementazione e analisi statistica. Il
+\cref{cap:esperimenti} è dedicato agli esperimenti, organizzati per domanda di ricerca. Il
+\cref{cap:prospettive} discute lo stato del lavoro, le attività rimanenti e le prospettive di
+ricerca.

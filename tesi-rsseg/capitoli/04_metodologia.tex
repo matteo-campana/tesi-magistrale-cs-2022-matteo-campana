@@ -1,0 +1,487 @@
+% =====================================================================
+%  Capitolo 4 — Metodologia sperimentale
+% =====================================================================
+\chapter{Metodologia sperimentale}
+\label{cap:metodologia}
+
+Questo capitolo traduce le domande di ricerca in un disegno sperimentale: ipotesi, dati,
+protocolli di split, configurazioni di addestramento e di valutazione, implementazione, budget
+computazionale e analisi statistica. Il principio guida è che ogni confronto cambi \emph{un solo}
+fattore alla volta e che ogni differenza venga riportata con la sua variabilità.
+
+% ---------------------------------------------------------------------
+\section{Ipotesi e disegno sperimentale}
+\label{sec:disegno}
+
+Le domande di ricerca della \cref{sec:domande} si traducono in ipotesi verificabili. Nel seguito
+$\Delta$ indica la differenza di mIoU di test tra la variante e il suo riferimento, mediata sui
+seed. Ogni ipotesi è formulata in modo che anche il suo rifiuto sia un risultato informativo.
+
+\begin{ipotesi}[\RQ{1}]\label{ip:lam}
+A parità di encoder e protocollo, le connessioni di salto con attenzione lineare migliorano la
+mIoU rispetto alle connessioni identità: $\Delta_{\mathrm{LAM}}>0$.
+\end{ipotesi}
+\begin{ipotesi}[\RQ{2}]\label{ip:vq}
+Un codebook sano (perplexity alta durante tutto l'addestramento) non peggiora la mIoU:
+$\Delta_{\mathrm{VQ}}\ge0$. Con le sole connessioni di salto libere la perplexity diminuisce
+durante l'addestramento (\cref{prop:aggiramento}).
+\end{ipotesi}
+\begin{ipotesi}[\RQ{3}]\label{ip:dino}
+Il vantaggio relativo del pre-addestramento DINO su ImageNet cresce al diminuire della frazione
+di etichette: $\Delta_{\mathrm{DINO}}(1\%)>\Delta_{\mathrm{DINO}}(100\%)$.
+\end{ipotesi}
+\begin{ipotesi}[\RQ{4}]\label{ip:aug}
+La variante \enquote{aerea} delle augmentation produce un encoder migliore della variante
+standard, soprattutto con poche etichette.
+\end{ipotesi}
+\begin{ipotesi}[\RQ{6}]\label{ip:ndsm}
+L'nDSM come quarto canale migliora la mIoU, con i guadagni maggiori sulle classi edifici e alberi.
+\end{ipotesi}
+
+La \RQ{5} è descrittiva: misura costi e accuratezze senza un'ipotesi direzionale. La
+\cref{tab:disegno} collega ogni domanda alla variabile manipolata, al riferimento e alla
+campagna di esperimenti che la esegue.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Disegno sperimentale per domanda di ricerca]{Disegno sperimentale: per ogni domanda di
+    ricerca, il fattore che varia, il riferimento, la campagna che la esegue e il numero di
+    passi (pre-addestramenti, training, benchmark) con tre seed.}
+  \label{tab:disegno}
+  \begin{tabular}{|c|p{3.5cm}|p{2.7cm}|l|c|}
+    \hline
+    \textbf{RQ} & \textbf{Fattore} & \textbf{Riferimento} & \textbf{Campagna} & \textbf{Passi} \\
+    \hline
+    \RQ{1} & connessioni di salto: LAM / identità & \maresunet{} R18 ImageNet & \codice{rq1\_attention} & 6 \\
+    \hline
+    \RQ{2} & neck: identità / VQ; encoder R18/R34; pre-addestr. ImageNet/DINO & stessa configurazione senza VQ & \codice{thesis\_grid} & 26 \\
+    \hline
+    \RQ{3} & frazione di etichette $\{1, 10, 25, 100\}\%$ $\times$ pre-addestr. & ImageNet, stessa frazione & \codice{rq3\_low\_label} & 38 \\
+    \hline
+    \RQ{4} & augmentation DINO: standard / aerea & DINO standard & \codice{rq4\_aerial} & 14 \\
+    \hline
+    \RQ{5} & encoder R18/R34/R50, Swin-T, ViT & \maresunet{} R18 & \makecell[l]{\codice{rq5\_efficiency}\\\codice{transformers}} & 10 + 10 \\
+    \hline
+    \RQ{6} & ingresso RGB / RGB + nDSM (ufficiale, calcolato) & RGB & \makecell[l]{\codice{rq6\_ndsm}\\\codice{vaihingen}} & 9 + 9 \\
+    \hline
+    -- & protocollo del 2022 & tab.~\ref{tab:risultati-2022} & \codice{thesis2022} & 3 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\section{Dati}
+\label{sec:dati}
+
+\subsection{ISPRS Potsdam e Vaihingen}
+
+Il dataset principale è ISPRS Potsdam, il secondo benchmark è ISPRS
+Vaihingen~\cite{rottensteiner2012isprs,isprs2dlabeling} (\cref{tab:dataset}). Le classi e la
+palette delle maschere sono le stesse per i due dataset (\cref{tab:classi}). Rispetto al codice
+del 2022, l'ordine degli indici segue la convenzione ISPRS/MMSegmentation, con il clutter per
+ultimo: così il valore ignorato (255) non può coincidere per errore con una classe reale.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Caratteristiche dei dataset ISPRS]{Caratteristiche dei dataset ISPRS usati.}
+  \label{tab:dataset}
+  \begin{tabular}{|l|p{4.6cm}|p{4.6cm}|}
+    \hline
+    & \textbf{Potsdam} & \textbf{Vaihingen} \\
+    \hline
+    Aree & 38 tile $6000\times6000$ & 33 aree, circa $1900\times2500$ \\
+    GSD & \SI{5}{\centi\meter} & \SI{9}{\centi\meter} \\
+    Immagine & RGB (\codice{2\_Ortho\_RGB}) & IR-R-G in falso colore (\codice{top}) \\
+    Altezze & DSM assoluto e nDSM ufficiale & solo DSM assoluto (nDSM calcolato) \\
+    Etichette & 6 classi, piene ed \emph{eroded} & 6 classi, piene ed \emph{eroded} \\
+    Metrica principale & mIoU con tutte le classi & mIoU senza clutter (quasi assente) \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Classi ISPRS e palette delle maschere]{Classi ISPRS, indici usati in questo lavoro e
+    colori delle maschere.}
+  \label{tab:classi}
+  \begin{tabular}{|c|l|c|c|}
+    \hline
+    \textbf{Indice} & \textbf{Classe} & \textbf{RGB} & \textbf{Colore} \\
+    \hline
+    0 & Superfici impermeabili & (255, 255, 255) & \ClasseBoxX{ClsImpervious} \\
+    1 & Edifici               & (0, 0, 255)     & \ClasseBoxX{ClsBuilding} \\
+    2 & Vegetazione bassa     & (0, 255, 255)   & \ClasseBoxX{ClsLowVeg} \\
+    3 & Alberi                & (0, 255, 0)     & \ClasseBoxX{ClsTree} \\
+    4 & Auto                  & (255, 255, 0)   & \ClasseBoxX{ClsCar} \\
+    5 & Clutter / sfondo      & (255, 0, 0)     & \ClasseBoxX{ClsClutter} \\
+    255 & non etichettato (ignorato) & -- & -- \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\subsection{Problemi noti dei file}
+
+L'ispezione dei file distribuiti ha rivelato alcuni difetti che, se ignorati, falserebbero
+silenziosamente i risultati (\cref{tab:difetti-file}). La preparazione dei dati li gestisce con
+regole esplicite: un ordine di priorità tra le cartelle delle etichette, il rifiuto delle
+etichette con più dello 0,5\% di colori fuori palette e un controllo delle dimensioni con
+tolleranza di 2 pixel.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Difetti noti dei file ISPRS]{Difetti noti dei file ISPRS e loro gestione.}
+  \label{tab:difetti-file}
+  \begin{tabular}{|p{4.8cm}|p{2.9cm}|p{4.2cm}|}
+    \hline
+    \textbf{Difetto} & \textbf{Effetto se ignorato} & \textbf{Gestione} \\
+    \hline
+    Etichetta di \tile{4\_12} in \codice{5\_Labels\_all} corrotta (nessun colore ISPRS) &
+      una tile di validation tutta ignorata & si usa la copia in \codice{5\_Labels\_for\_\allowbreak participants} \\
+    \hline
+    Etichetta di \tile{6\_7}: lo 0,7\% dei pixel \enquote{auto} ha colore (252, 255, 0) &
+      pixel ignorati & stessa priorità tra cartelle \\
+    \hline
+    DSM e nDSM di \tile{3\_13} larghi 5999 pixel & disallineamento con l'immagine & una colonna replicata dal bordo \\
+    \hline
+    nDSM \codice{ownapproach}: 11 file su 38 vuoti & ablation impossibile & si usa la variante \codice{lastools} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\section{Protocolli di split}
+\label{sec:split}
+
+Gli split sono sempre \textbf{per tile intere}: le tile vengono assegnate agli split \emph{prima}
+del taglio in ritagli, quindi nessun ritaglio può contenere pixel di due split e nessuna porzione
+di scena compare sia in training sia in valutazione~\cite{kaufman2012leakage}
+(\cref{fig:split}).
+
+\begin{description}[style=nextline, leftmargin=1.2em]
+  \item[Potsdam \enquote{standard}.] È lo split di riferimento della
+  letteratura~\cite{mmseg2020}: 24 tile di training, che coincidono con quelle distribuite con le
+  etichette ai partecipanti del contest, e 14 tile di test. La validation usa due tile di
+  training (\tile{4\_12} e \tile{7\_11}) tenute fuori per intero. Su questo protocollo si basano
+  tutte le conclusioni.
+  \item[Potsdam \enquote{tesi 2022}.] Riproduce il protocollo del 2022: esclude le stesse dieci
+  aree, usa 22 tile di training e 6 di validation. Il testo originale non specifica quali sei:
+  qui sono fissate a \tile{3\_14}, \tile{4\_11}, \tile{4\_15}, \tile{5\_13}, \tile{6\_15} e
+  \tile{7\_11}. Il \enquote{test} coincide con la validation, valutata su tile intere. Serve solo
+  al confronto con la \cref{tab:risultati-2022}.
+  \item[Vaihingen \enquote{standard}.] 16 aree di training e 17 di test. La validation usa le
+  aree 11 e 30. L'area 26 resta in training perché contiene gran parte del poco clutter
+  disponibile.
+\end{description}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/split_potsdam}}
+  \caption[Split delle tile di Potsdam]{Assegnazione delle 38 tile di Potsdam agli split.
+    (a)~Protocollo standard della letteratura, usato per tutte le conclusioni. (b)~Protocollo
+    della tesi del 2022: quattro delle aree escluse (\tile{2\_13}, \tile{2\_14}, \tile{6\_13},
+    \tile{7\_13}) sono tile di test nel protocollo standard.}
+  \label{fig:split}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\section{Preparazione dei dati}
+\label{sec:preparazione}
+
+Le maschere RGB vengono convertite in indici con una tabella di conversione vettorizzata sui
+codici a 24 bit dei colori. I colori fuori palette diventano 255. Le tile di training vengono
+tagliate in ritagli di $512\times512$ pixel con passo 512. L'ultimo ritaglio di ogni riga e
+colonna è allineato al bordo, e i ritagli completamente non etichettati vengono scartati. Su
+Potsdam si ottengono 144 ritagli per tile, quindi \num{3168} ritagli di training (22 tile) e 288 di
+validation (2 tile). Su Vaihingen, con sole 14 aree di training, i ritagli si sovrappongono
+(passo 256), ma solo all'interno del training. Le tile di validation e di test vengono registrate
+anche intere, con la maschera piena e quella eroded, per la valutazione finale.
+
+\paragraph{Regime a poche etichette.}
+Per la \RQ{3} il sottoinsieme di ritagli etichettati viene campionato \emph{per tile} con seed
+fisso. A parità di epoche, una frazione piccola di etichette produrrebbe pochissimi
+aggiornamenti dei pesi (con l'1\% delle etichette, 2 batch per epoca) e il confronto tra
+pre-addestramenti misurerebbe soprattutto il sotto-addestramento. I ritagli etichettati vengono
+quindi ripetuti, con un nuovo rimescolamento a ogni passata, fino ad avere per epoca tanti batch
+quanti con tutte le etichette. Ogni frazione riceve così lo stesso budget di iterazioni
+(\cref{tab:frazioni}). Il pre-addestramento DINO usa comunque tutte le immagini di training,
+senza etichette.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Regime a poche etichette su Potsdam]{Regime a poche etichette su Potsdam: ritagli
+    etichettati e batch per epoca (batch effettivo 8, accumulo 4), con e senza ripetizione fino
+    alla lunghezza di un'epoca completa.}
+  \label{tab:frazioni}
+  \begin{tabular}{|c|r|c|c|}
+    \hline
+    \textbf{Frazione} & \makecell{\textbf{Ritagli}\\\textbf{etichettati}} & \makecell{\textbf{Batch/epoca}\\\textbf{(con ripetizione)}} & \makecell{\textbf{Batch/epoca}\\\textbf{(senza)}} \\
+    \hline
+    100\% & \num{3168} & 396 & 396 \\
+    25\%  & 792  & 396 & 99 \\
+    10\%  & 308  & 396 & 38 \\
+    1\%   & 22   & 396 & 2 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\paragraph{Pool non etichettati.}
+Per verificare se più dati di dominio aiutino DINO, il pre-addestramento può usare anche i frame
+grezzi di Toronto (RGB a 8 bit, \num{4433} ritagli) e di Vaihingen (IR-R-G a 16 bit, riportati a
+8 bit con uno stretch ai percentili 0,5--99,5). I frame di Vaihingen coprono anche le aree di
+test di Vaihingen, quindi un pool della stessa città del dataset di valutazione viene rifiutato
+automaticamente, per evitare un'informazione trasduttiva sul test.
+
+% ---------------------------------------------------------------------
+\section{Configurazione di addestramento}
+\label{sec:addestramento}
+
+\subsection{Segmentazione}
+
+La \cref{tab:iperparametri} riporta le configurazioni di addestramento. La configurazione di base
+mantiene gli iperparametri del 2022 dove possibile (learning rate, StepLR, batch effettivo 32,
+100 epoche) e corregge i difetti del protocollo. L'ottimizzatore è AdamW~\cite{loshchilov2019adamw}
+(nel 2022 Adam~\cite{kingma2015adam}). Il batch di 8 ritagli con accumulo del gradiente su 4 passi
+dà un batch effettivo di 32 nei limiti di memoria della GPU, con precisione mista
+bfloat16~\cite{micikevicius2018mixed}. La normalizzazione con media e deviazione standard di
+ImageNet è il primo strato del modello: training e inferenza non possono divergere su questo
+punto. L'augmentation di training applica a immagine e maschera, in modo identico, riflessioni
+orizzontali e verticali e rotazioni di \ang{90}: sono gli elementi di $D_4$, che non richiedono
+interpolazione e lasciano le etichette esatte. Il miglior checkpoint viene scelto sulla mIoU di
+validation, e l'addestramento si ferma dopo 20 epoche senza miglioramenti.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Configurazioni di addestramento della segmentazione]{Configurazioni di addestramento
+    della segmentazione. La colonna \enquote{tesi 2022} riproduce il protocollo originale ed è
+    usata solo per il confronto con la \cref{tab:risultati-2022}.}
+  \label{tab:iperparametri}
+  \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Parametro} & \textbf{Base (ResNet)} & \textbf{Transformer} & \textbf{Tesi 2022} \\
+    \hline
+    Ritaglio / passo & 512 / 512 & 512 / 512 & 256 / 256 \\
+    Augmentation & $D_4$ & $D_4$ & nessuna \\
+    Ottimizzatore & AdamW & AdamW & Adam \\
+    Learning rate & $10^{-3}$ & $10^{-4}$ & $10^{-3}$ \\
+    Weight decay & $10^{-4}$ & $10^{-4}$ & -- \\
+    Scheduler & StepLR (15; 0,4) & coseno & StepLR (15; 0,4) \\
+    Batch $\times$ accumulo & $8\times4$ & $4\times8$ & $32\times1$ \\
+    Epoche / early stopping & 100 / 20 & 100 / 20 & 100 / no \\
+    Precisione & bf16 mista & bf16 mista & bf16 mista \\
+    Dropout / drop path & 0,1 / -- & 0,1 / 0,2 & 0,1 / -- \\
+    Valutazione: finestra / passo & 512 / 256 & 512 / 256 & 256 / 128 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\paragraph{Quantizzazione.}
+La \maresunetvq{} usa un codebook di $K=512$ codici con $\beta=0{,}25$, aggiornamento EMA con
+$\gamma=0{,}99$, inizializzazione dai dati e riavvio dei codici con conteggio EMA inferiore a
+0,1. Durante l'addestramento si registrano perplexity e uso del codebook a ogni epoca.
+L'ablation della \RQ{2} varia $K\in\{64,256,512,1024\}$, $\beta\in\{0{,}1;\,0{,}25;\,1{,}0\}$,
+il peso $\lambda$, la quantizzazione delle connessioni di salto e l'aggiornamento per gradiente
+($\gamma=0$) al posto dell'EMA.
+
+\paragraph{Encoder transformer.}
+Oltre a ResNet-18/34/50, l'encoder può essere uno Swin-T~\cite{liu2021swin} o un
+ViT~\cite{dosovitskiy2021vit}. Il ViT ha una sola scala, e le quattro scale richieste dal decoder
+vengono costruite con una \emph{simple feature pyramid}~\cite{li2022vitdet}. Tutti i pesi
+ImageNet vengono portati da torchvision, con l'equivalenza numerica verificata da test.
+
+\subsection{Pre-addestramento DINO}
+
+La \cref{tab:iperparametri-dino} riporta la configurazione del pre-addestramento e la
+\cref{tab:augmentation-dino} le due politiche di augmentation confrontate nella \RQ{4}.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Configurazione del pre-addestramento DINO]{Configurazione del pre-addestramento DINO,
+    a confronto con quanto dichiarato e quanto implementato nel 2022.}
+  \label{tab:iperparametri-dino}
+  \begin{tabular}{|l|c|c|}
+    \hline
+    \textbf{Parametro} & \textbf{Questo lavoro} & \textbf{2022 (codice)} \\
+    \hline
+    Testa di proiezione & \makecell{MLP 2048-2048-256\\$K=\num{16384}$ prototipi} & \makecell{assente\\(uscita densa)} \\
+    Normalizzazione della softmax & per campione & sull'intero batch \\
+    Viste & $2\times224^2+6\times96^2$ & viste locali a $224^2$ \\
+    Learning rate & \makecell{$5\cdot10^{-4}\cdot B/256$\\warmup 10 epoche, coseno} & fisso \\
+    Weight decay & coseno $0{,}04\to0{,}4$ & assente \\
+    $\tau_s$ / $\tau_t$ & \makecell{0,1 / $0{,}04\to0{,}07$\\in 30 epoche} & 0,1 / 0,04 fissa \\
+    Momentum del teacher & coseno $0{,}996\to1$ & 0,996 fisso \\
+    Teacher iniziale & copia dello student & rete indipendente \\
+    Centering & $\lambda=0{,}9$, per campione & \makecell{$\lambda=0{,}9$, sul batch\\appiattito} \\
+    Epoche / batch & 100 / 32 & 100 / -- \\
+    Clipping del gradiente & norma 3,0 & -- \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Politiche di augmentation per DINO]{Politiche di augmentation per DINO confrontate
+    nella \RQ{4}. Le probabilità di blur sono 1,0 e 0,1 per le due viste globali e 0,5 per le
+    locali; la solarizzazione si applica solo alla seconda vista globale.}
+  \label{tab:augmentation-dino}
+  \begin{tabular}{|l|c|c|}
+    \hline
+    \textbf{Trasformazione} & \textbf{Standard} & \textbf{Aerea} \\
+    \hline
+    Riflessione orizzontale & sì & sì \\
+    Riflessione verticale, rotazioni \ang{90} & no & sì \\
+    Jitter ($p=0{,}8$): luminosità, contrasto & 0,4; 0,4 & 0,2; 0,2 \\
+    Jitter: saturazione, tinta & 0,2; 0,1 & 0,1; 0,02 \\
+    Scala di grigi & $p=0{,}2$ & $p=0{,}1$ \\
+    Solarizzazione (2\textsuperscript{a} vista globale) & $p=0{,}2$ & mai \\
+    Blur gaussiano & sì & sì \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\section{Protocollo di valutazione}
+\label{sec:valutazione}
+
+La valutazione finale avviene sulle tile di test intere, con la finestra scorrevole della
+\cref{sec:finestra} (finestra 512, passo 256) e i pesi del miglior checkpoint di validation. Ogni
+tile viene predetta una volta sola e confrontata con due riferimenti, le etichette piene e quelle
+eroded. Si accumulano così due matrici di confusione sull'intero split. Dalle matrici si
+ricavano, per ciascun riferimento, IoU, F1, precision e recall per classe, OA, mF1 e mIoU, con
+tutte le classi e senza clutter. Il formato riprende le tabelle 4.3--4.8 della tesi del 2022, per
+facilitare il confronto. La metrica principale è la mIoU con tutte le classi su Potsdam e la mIoU
+senza clutter su Vaihingen.
+
+% ---------------------------------------------------------------------
+\section{Implementazione}
+\label{sec:implementazione}
+
+Il codice del 2022 non è stato riusato. Il pacchetto \rsseg{} (\emph{Remote Sensing
+SEGmentation}) è una reimplementazione da zero (\cref{fig:pipeline}): modelli e addestramento in
+Keras~3~\cite{chollet2015keras} su backend PyTorch~\cite{paszke2019pytorch}, tracciamento degli
+esperimenti con MLflow~\cite{zaharia2018mlflow}, configurazioni YAML componibili con validazione
+delle chiavi. I parametri, la configurazione completa, il commit del codice, le metriche per
+epoca, il picco di memoria della GPU, i checkpoint e i report di ogni esecuzione vengono
+registrati su MLflow.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/pipeline}}
+  \caption[Pipeline sperimentale]{Pipeline sperimentale. La preparazione divide i dati per tile
+    e produce ritagli e tile intere. Il ramo inferiore pre-addestra l'encoder con DINO, anche con
+    pool non etichettati. Le campagne orchestrano i passi in sottoprocessi riprendibili, e ogni
+    passo registra parametri, metriche e artefatti su MLflow.}
+  \label{fig:pipeline}
+\end{figure}
+
+\paragraph{Verifica.}
+109 test automatici, eseguiti in integrazione continua, verificano le proprietà da cui dipendono
+le conclusioni (\cref{tab:verifiche}). Alcune sono equivalenze numeriche con riferimenti
+indipendenti, altre sono invarianti dei dati, altre ancora test di regressione sui difetti del
+2022.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Verifiche automatiche]{Principali verifiche automatiche dell'implementazione.}
+  \label{tab:verifiche}
+  \begin{tabular}{|l|p{9.6cm}|}
+    \hline
+    \textbf{Ambito} & \textbf{Proprietà verificata} \\
+    \hline
+    Encoder & ResNet-18/34 Keras = torchvision (pesi e statistiche BN casuali), Swin e ViT con padding e shift \\
+    Attenzione & PAM lineare = trascrizione della formula originale = attenzione esplicita $1+\hatq\T\hatk$; CAM = riferimento NumPy \\
+    VQ & gradiente straight-through = identità; perdita solo in training; l'EMA ritrova centri noti con perplexity alta \\
+    DINO & perdita = media delle perdite per campione; teacher = copia iniziale, non addestrabile, aggiornato per EMA \\
+    Dati & split disgiunti; conversione colori biunivoca; allineamento immagine/maschera dopo l'augmentation; frazioni di etichette deterministiche \\
+    nDSM & encoder esteso con pesi nulli = encoder RGB (\cref{prop:inflazione}) \\
+    Metriche & metriche accumulate su più batch = calcolo NumPy sulla stessa matrice di confusione \\
+    Regressione & il clutter riceve gradiente (\cref{prop:classe-esclusa}) \\
+    End-to-end & dati sintetici $\to$ preparazione $\to$ training $\to$ report $\to$ DINO $\to$ fine-tuning \\
+    Ripresa & un training messo in pausa e ripreso coincide con uno ininterrotto \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\paragraph{Campagne.}
+Ogni domanda di ricerca è una \emph{campagna} YAML che elenca configurazioni, seed, sweep di
+parametri, pre-addestramenti richiesti e benchmark. L'esecutore espande la campagna in passi con
+un identificativo stabile e prepara i prerequisiti mancanti (dati, pool, pre-addestramenti).
+Esegue poi ogni passo in un sottoprocesso, così che un errore o un esaurimento della memoria
+fermi solo quel passo. I passi completati vengono riusati tra campagne diverse, e una campagna
+interrotta riprende dal punto in cui si era fermata. Training e pre-addestramenti possono essere
+messi in pausa e ripresi in modo esatto: l'ordine dei dati e le augmentation dipendono solo dal
+seed e dalla posizione nel flusso.
+
+% ---------------------------------------------------------------------
+\section{Budget computazionale}
+\label{sec:budget}
+
+Tutti gli esperimenti sono dimensionati per una singola GPU NVIDIA RTX 4060 da \SI{8}{\giga\byte}.
+La \cref{tab:vram} riporta il picco di memoria e il throughput misurati su passi di training
+reali. ResNet-50 con batch 8 non entra in memoria e viene eseguito con batch 4 e accumulo 8. Il
+tempo di un'epoca su Potsdam è di circa 2,8 minuti per \maresunet{} R18 e 3,2 minuti per R34. La
+valutazione delle 14 tile di test richiede circa 7 minuti. L'insieme di tutte le campagne è
+stimato in circa 16 giorni di calcolo, di cui circa 4 per il solo ViT-B/16.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Memoria e throughput misurati su RTX 4060]{Picco di memoria della GPU e throughput
+    misurati su RTX 4060 (\SI{8}{\giga\byte}) con passi di training reali, ritagli $512^2$ e
+    precisione bf16 mista.}
+  \label{tab:vram}
+  \begin{tabular}{|l|l|r|r|}
+    \hline
+    \textbf{Configurazione} & \textbf{Batch $\times$ accumulo} & \textbf{VRAM} & \textbf{Immagini/s} \\
+    \hline
+    \maresunet{} R18          & $8\times4$ & \SI{4,8}{\giga\byte} & 21 \\
+    \maresunet{} R18 + nDSM   & $8\times4$ & \SI{4,8}{\giga\byte} & 23 \\
+    \maresunetvq{} R18        & $8\times4$ & \SI{4,7}{\giga\byte} & 23 \\
+    \maresunet{} R34          & $8\times4$ & \SI{5,5}{\giga\byte} & 19 \\
+    \maresunet{} R50          & $8\times4$ & esaurita & -- \\
+    \maresunet{} Swin-T       & $4\times8$ & \SI{4,2}{\giga\byte} & 13 \\
+    \maresunet{} ViT-B/16     & $4\times8$ & \SI{7,1}{\giga\byte} & 2 \\
+    DINO R18 ($2\times224^2+6\times96^2$) & $32$ & \SI{4,2}{\giga\byte} & 85 \\
+    DINO R34                  & $32$ & \SI{6,2}{\giga\byte} & 40 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\section{Analisi statistica e riproducibilità}
+\label{sec:statistica}
+
+Le differenze attese tra le varianti sono dell'ordine di uno o due punti di mIoU, comparabili con
+la variabilità tra esecuzioni con seed diversi~\cite{bouthillier2021variance}. Per questo:
+
+\begin{itemize}
+  \item ogni configurazione viene addestrata con \textbf{tre seed} (0, 1, 2), e si riportano media
+  e deviazione standard;
+  \item i confronti sono \textbf{appaiati per seed}: il seed fissa l'inizializzazione delle parti
+  non pre-addestrate, l'ordine dei dati e le augmentation, quindi la differenza
+  $\Delta^{(s)}=\mathrm{mIoU}^{(s)}_{\mathrm{variante}}-\mathrm{mIoU}^{(s)}_{\mathrm{rif}}$
+  elimina una parte della variabilità comune;
+  \item la variabilità dovuta al campione di test (solo 14 tile su Potsdam) viene stimata con un
+  \textbf{bootstrap sulle tile}~\cite{efron1993bootstrap}: si ricampionano con reinserimento le
+  matrici di confusione delle singole tile e si ricalcola la mIoU, ottenendo un intervallo al
+  95\%;
+  \item un effetto viene considerato sostenuto dai dati solo se $\Delta^{(s)}$ ha lo stesso segno
+  per tutti i seed \emph{e} l'intervallo bootstrap della differenza esclude lo zero; altrimenti
+  il risultato è riportato come non conclusivo.
+\end{itemize}
+
+\Segnaposto{Implementare il bootstrap per tile: il report salva oggi la mIoU di ogni tile ma
+non la sua matrice di confusione, che serve per ricalcolare la mIoU globale sui campioni
+bootstrap. Fissare il numero di ricampionamenti.}
+
+Ogni esecuzione salva la configurazione completa, il commit del codice e il manifest dei dati, e
+gli split sono deterministici e verificati da test. I risultati di ogni tabella del
+\cref{cap:esperimenti} si possono quindi rigenerare con un solo comando di campagna.
