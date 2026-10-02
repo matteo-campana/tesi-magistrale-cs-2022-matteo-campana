@@ -140,6 +140,7 @@ configs/        base.yaml, smoke.yaml, datasets/, experiments/, ssl/, campaigns/
 scripts/        griglia della tesi (wrapper della campagna thesis_grid)
 tests/          test automatici (pytest)
 docs/           documentazione
+tesi-rsseg/     nuova stesura della tesi in LaTeX (classe sapthesis, vedi tesi-rsseg/README.md)
 legacy/         materiale originale 2022 (tesi, slide, codice) — invariato
 ```
 

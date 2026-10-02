@@ -1,0 +1,26 @@
+% Memoria richiesta dall'attenzione sul primo livello dell'encoder (stride 4, C = 64,
+% d_k = C/8) in funzione del lato del ritaglio, per una singola immagine in float32.
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.9\linewidth, height=6.2cm,
+      xlabel={lato del ritaglio $s$ (pixel)},
+      ylabel={memoria (GiB, scala log.)},
+      xmin=128, xmax=1024, ymode=log, ymin=1e-5, ymax=60,
+      xtick={128,256,384,512,640,768,896,1024},
+      grid=major, grid style={SapGrigioChiaro},
+      legend pos=north west, legend cell align=left,
+      legend style={font=\footnotesize, draw=SapGrigioTenue},
+      tick label style={font=\footnotesize}, label style={font=\small},
+      samples=60, domain=128:1024,
+    ]
+    % N = (s/4)^2 ; dot-product: N^2 * 4 B ; LAM: (N (C + d_k) + d_k C) * 4 B
+    \addplot[SapRosso, very thick] {((x/4)^2)^2*4/2^30};
+    \addlegendentry{dot-product: matrice $N\times N$}
+    \addplot[SapGrigio, very thick, dashed] {(((x/4)^2)*(64+8) + 8*64)*4/2^30};
+    \addlegendentry{LAM: stato $d_k\times C$ e uscite $N\times(C+d_k)$}
+    \addplot[black, thin, densely dotted, domain=128:1024] {8};
+    \node[font=\scriptsize, anchor=south east] at (axis cs:1020,8) {\SI{8}{\giga\byte} (RTX 4060)};
+    \addplot[only marks, mark=*, mark size=1.6pt, SapRossoScuro] coordinates {(512,1)};
+    \node[font=\scriptsize, anchor=west, text=SapRossoScuro] at (axis cs:525,0.6) {\SI{1}{GiB} per immagine a $s=512$};
+  \end{axis}
+\end{tikzpicture}

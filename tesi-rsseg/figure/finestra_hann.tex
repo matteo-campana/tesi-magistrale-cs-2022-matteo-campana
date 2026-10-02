@@ -1,0 +1,27 @@
+% Pesi delle finestre di Hann con sovrapposizione del 50%: la somma vale 1 lontano dai bordi.
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.9\linewidth, height=4.8cm,
+      xlabel={posizione lungo la tile (in unità di lato della finestra $w$)},
+      ylabel={peso},
+      xmin=0, xmax=3, ymin=0, ymax=1.25,
+      xtick={0,0.5,...,3}, ytick={0,0.5,1},
+      grid=major, grid style={SapGrigioChiaro},
+      legend style={font=\footnotesize, draw=SapGrigioTenue, at={(0.5,1.03)}, anchor=south},
+      legend columns=3,
+      tick label style={font=\footnotesize}, label style={font=\small},
+      samples=200,
+    ]
+    \addplot[SapRossoTenue, thick, domain=0:1] {sin(deg(pi*x))^2};
+    \addlegendentry{$\omega$ delle singole finestre}
+    \addplot[SapRossoTenue, thick, domain=0.5:1.5, forget plot] {sin(deg(pi*(x-0.5)))^2};
+    \addplot[SapRossoTenue, thick, domain=1:2, forget plot] {sin(deg(pi*(x-1)))^2};
+    \addplot[SapRossoTenue, thick, domain=1.5:2.5, forget plot] {sin(deg(pi*(x-1.5)))^2};
+    \addplot[SapRossoTenue, thick, domain=2:3, forget plot] {sin(deg(pi*(x-2)))^2};
+    \addplot[SapRosso, very thick, domain=0.5:2.5] {1};
+    \addlegendentry{somma dei pesi}
+    \addplot[SapGrigio, very thick, dashed, domain=0:0.5] {sin(deg(pi*x))^2};
+    \addlegendentry{bordo: compensato dalla normalizzazione}
+    \addplot[SapGrigio, very thick, dashed, domain=2.5:3, forget plot] {sin(deg(pi*(x-2)))^2};
+  \end{axis}
+\end{tikzpicture}

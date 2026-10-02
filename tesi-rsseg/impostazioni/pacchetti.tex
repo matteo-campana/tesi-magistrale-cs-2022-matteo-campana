@@ -1,0 +1,94 @@
+% =====================================================================
+%  Pacchetti
+%  La classe Sapthesis carica già: geometry, fontenc (T1), lmodern,
+%  caption (etichetta piccola e in grassetto, separatore "."), graphicx,
+%  color, booktabs, amsmath, etoolbox, fancyhdr.
+% =====================================================================
+
+% --- Lingua e testo ----------------------------------------------------
+\usepackage[italian]{babel}
+\usepackage[autostyle,italian=guillemets]{csquotes}
+\usepackage{microtype}
+\usepackage{icomma}        % virgola decimale in modo matematico: $0,604$
+\usepackage{enumitem}
+\setlist{itemsep=0.15em, parsep=0.15em, topsep=0.3em}
+
+% Paragrafi separati da una riga vuota e senza rientro, come nella tesi del 2022.
+\usepackage[skip=0.75\baselineskip plus 2pt, indent=0pt]{parskip}
+
+% --- Colori (xcolor sostituisce color, caricato dalla classe) ------------
+\usepackage[table,dvipsnames]{xcolor}
+\input{impostazioni/colori}
+
+% --- Matematica ----------------------------------------------------------
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% --- Tabelle -------------------------------------------------------------
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{tabularx}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={.}, group-minimum-digits=4,
+         detect-weight=true, detect-family=true}
+\renewcommand{\arraystretch}{1.15}
+
+% --- Figure e schemi -----------------------------------------------------
+\usepackage{float}          % [H]: posizione fissa (usata nei capitoli con segnaposto)
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, calc, fit, backgrounds,
+                shapes.geometric, shapes.misc, matrix, decorations.pathreplacing,
+                patterns, shadows}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% --- Algoritmi -----------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\floatname{algorithm}{Algoritmo}
+\renewcommand{\listalgorithmname}{Elenco degli algoritmi}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+\algrenewcommand\algorithmicfor{\textbf{per}}
+\algrenewcommand\algorithmicdo{\textbf{esegui}}
+\algrenewcommand\algorithmicend{\textbf{fine}}
+\algrenewcommand\algorithmicif{\textbf{se}}
+\algrenewcommand\algorithmicthen{\textbf{allora}}
+\algrenewcommand\algorithmicreturn{\textbf{restituisci}}
+\algnewcommand\algorithmicforeach{\textbf{per ogni}}
+\algdef{S}[FOR]{ForEach}[1]{\algorithmicforeach\ #1\ \algorithmicdo}
+
+% --- Note di lavoro e segnaposto -----------------------------------------
+% Per la versione finale: \bozzafalse in main.tex (le note spariscono).
+\ifbozza
+  \usepackage[colorinlistoftodos, italian, textsize=footnotesize,
+              color=ColTodo, bordercolor=ColTodoBordo, linecolor=ColTodoBordo]{todonotes}
+\else
+  \usepackage[disable]{todonotes}
+\fi
+\setlength{\marginparwidth}{2.2cm}
+
+% --- Collegamenti (stesse cornici colorate della tesi del 2022) -----------
+\usepackage{hyperref}
+\hypersetup{
+  pdftitle    = {\TitoloTesi},
+  pdfauthor   = {Matteo Campana},
+  pdfsubject  = {Tesi di Laurea Magistrale in Engineering in Computer Science},
+  pdfkeywords = {segmentazione semantica, telerilevamento, attenzione lineare,
+                 quantizzazione vettoriale, apprendimento auto-supervisionato, DINO},
+  colorlinks      = false,
+  pdfborder       = {0 0 1},
+  linkbordercolor = LinkRosso,
+  citebordercolor = CitaVerde,
+  urlbordercolor  = UrlCiano,
+  bookmarksnumbered = true,
+}
+\usepackage[italian, noabbrev]{cleveref}
+\crefname{algorithm}{algoritmo}{algoritmi}
+\Crefname{algorithm}{Algoritmo}{Algoritmi}
+\crefname{ipotesi}{ipotesi}{ipotesi}
+\Crefname{ipotesi}{Ipotesi}{Ipotesi}

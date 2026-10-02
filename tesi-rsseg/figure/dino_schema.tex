@@ -1,0 +1,49 @@
+% Auto-distillazione DINO con multi-crop: teacher sulle viste globali, student su tutte;
+% centering e sharpening sul teacher, stop-gradient, teacher come EMA dello student.
+\begin{tikzpicture}[node distance=4mm and 6mm,
+    vista/.style={dato, minimum width=1.2cm, minimum height=6mm, font=\scriptsize},
+  ]
+  \node[dato, minimum height=12mm] (x) {immagine\\$\vect{x}$};
+
+  \node[vista, above right=3mm and 9mm of x] (g) {$\vect{x}^{g}_{1}, \vect{x}^{g}_{2}$\\$224^2$};
+  \node[vista, below right=3mm and 9mm of x] (l) {$\vect{x}^{l}_{1..M}$\\$96^2$};
+  \draw[flusso] (x.east) -- ++(3mm,0) |- (g.west);
+  \draw[flusso] (x.east) -- ++(3mm,0) |- (l.west);
+  \node[nota, above=0mm of g] {viste globali};
+  \node[nota, below=0mm of l] {viste locali};
+
+  % teacher
+  \node[enc, right=14mm of g, minimum width=2.5cm, fill=SapGrigioChiaro, draw=SapGrigio] (t)
+       {teacher $h_t\circ f_t$\\{\scriptsize $\theta_t$, nessun gradiente}};
+  \node[blocco, fill=white, right=of t] (tc) {$\softmax\!\big((\cdot-\vect{c})/\tau_t\big)$};
+  \node[dato, right=of tc] (pt) {$P_t$};
+
+  % student
+  \node[enc, right=14mm of l, minimum width=2.5cm] (s) {student $h_s\circ f_s$\\{\scriptsize $\theta_s$}};
+  \node[blocco, fill=white, right=of s] (sc) {$\softmax\!\big(\cdot/\tau_s\big)$};
+  \node[dato, right=of sc] (ps) {$P_s$};
+
+  \draw[flusso] (g) -- (t);
+  \draw[flusso] (l) -- (s);
+  \draw[flusso] (g.east) -- ++(4mm,0) |- ([yshift=1.5mm]s.west);
+  \draw[flusso] (t) -- (tc);
+  \draw[flusso] (tc) -- (pt);
+  \draw[flusso] (s) -- (sc);
+  \draw[flusso] (sc) -- (ps);
+
+  % loss
+  \node[quant, right=10mm of $(pt)!0.5!(ps)$, align=center] (loss)
+       {$\displaystyle\sum_{g}\sum_{v\neq g}\Hent\big(P_t(\vect{x}^g),P_s(\vect{x}^v)\big)$};
+  \draw[flusso] (pt) -| (loss.north);
+  \draw[flusso] (ps) -| (loss.south);
+  \draw[grad] (loss.south) ++(-4mm,0) |- ([yshift=-3mm]ps.south) -| (s.south)
+       node[pos=0.25, below, font=\scriptsize, text=SapRosso] {retropropagazione solo nello student};
+  \node[font=\scriptsize, text=SapRosso, right=0.5mm of pt, yshift=3mm] {sg};
+
+  % EMA and centering
+  \draw[->, SapRossoScuro, thick] (s.north) -- (t.south)
+       node[midway, right, font=\scriptsize, align=left]
+       {$\theta_t\leftarrow m\,\theta_t+(1-m)\,\theta_s$};
+  \draw[->, SapGrigio, densely dotted, thick] (tc.north) to[out=110, in=70, looseness=4]
+       node[above, font=\scriptsize, text=SapGrigio] {$\vect{c}\leftarrow\lambda\vect{c}+(1-\lambda)\,\overline{h_t f_t(\vect{x}^{g})}$} (tc.north east);
+\end{tikzpicture}

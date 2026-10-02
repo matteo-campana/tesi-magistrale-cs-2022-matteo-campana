@@ -1,0 +1,40 @@
+% Pipeline sperimentale: dai dati ISPRS al report, con il ramo di pre-addestramento DINO
+% e l'orchestrazione delle campagne. Coordinate esplicite su una griglia 5 x 2.
+\begin{tikzpicture}[
+    p/.style={attn, text width=2.4cm, minimum height=14mm},
+    ds/.style={dato, text width=2.3cm, minimum height=12mm, font=\scriptsize},
+  ]
+  \def\dx{3.25}
+  % riga superiore: segmentazione supervisionata
+  \node[ds] (raw)   at (0,0)      {Dati ISPRS\\TOP, etichette, DSM/nDSM};
+  \node[p]  (prep)  at (\dx,0)    {\texttt{prepare}\\{\scriptsize split per tile, LUT, ritagli, nDSM, statistiche}};
+  \node[ds] (man)   at (2*\dx,0)  {ritagli e tile intere\\\texttt{crops.csv}, \texttt{split.json}};
+  \node[p]  (train) at (3*\dx,0)  {\texttt{train}\\{\scriptsize Keras \texttt{fit}, CE + VQ, early stopping}};
+  \node[p]  (eval)  at (4*\dx,0)  {valutazione\\{\scriptsize finestra scorrevole, etichette piene + eroded}};
+  % riga inferiore: pre-addestramento
+  \node[ds] (pool)  at (0,-2.6)     {frame non etichettati\\Toronto, Vaihingen};
+  \node[p]  (unl)   at (\dx,-2.6)   {\texttt{prepare-}\\\texttt{unlabeled}\\{\scriptsize ritagli 512, 8 bit}};
+  \node[p]  (dino)  at (2*\dx,-2.6) {\texttt{pretrain}\\{\scriptsize DINO, multi-crop}};
+  \node[ds] (bb)    at (3*\dx,-2.6) {encoder dello student\\\texttt{.weights.h5}};
+  \node[blocco, fill=SapRossoVelo, text width=2.4cm, minimum height=12mm] (mlf) at (4*\dx,-2.6)
+       {MLflow\\{\scriptsize parametri, metriche, artefatti}};
+  % orchestrazione
+  \node[quant, text width=8.6cm] (camp) at (2.5*\dx,2.0)
+       {\texttt{campaign}: passi in sottoprocessi, prerequisiti automatici, ripresa, report};
+
+  \draw[flusso] (raw) -- (prep);
+  \draw[flusso] (prep) -- (man);
+  \draw[flusso] (man) -- (train);
+  \draw[flusso] (train) -- (eval);
+  \draw[flusso] (pool) -- (unl);
+  \draw[flusso] (unl) -- (dino);
+  \draw[flusso] (man) -- node[nota, right, pos=0.45] {immagini di training} (dino);
+  \draw[flusso] (dino) -- (bb);
+  \draw[flusso] (bb) -- node[nota, right, pos=0.45] {inizializzazione} (train);
+  \draw[flusso] (eval) -- (mlf);
+  \draw[flusso, densely dotted] (bb) -- (mlf);
+
+  \draw[->, SapRossoScuro, densely dashed] (camp.west) -| (prep.north);
+  \draw[->, SapRossoScuro, densely dashed] (camp.south -| train.north) -- (train.north);
+  \draw[->, SapRossoScuro, densely dashed] (camp.east) -| (eval.north);
+\end{tikzpicture}

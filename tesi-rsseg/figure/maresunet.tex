@@ -1,0 +1,74 @@
+% Architettura MAResU-Net: encoder ResNet, blocchi PAM-CAM sulle connessioni di salto,
+% neck opzionale (identità o VQ), decoder con somme e testa a risoluzione piena.
+\begin{tikzpicture}[
+    e/.style={enc, minimum width=2.3cm},
+    a/.style={attn, minimum width=2.3cm},
+    d/.style={dec, minimum width=2.3cm},
+    somma/.style={circle, draw=SapRossoScuro, fill=white, inner sep=0pt, minimum size=4.2mm,
+                  font=\footnotesize, line width=0.5pt},
+  ]
+  % --- livelli (stride) ---------------------------------------------------
+  \def\yA{-2.0}\def\yB{-3.6}\def\yC{-5.2}\def\yD{-6.8}
+
+  % --- encoder --------------------------------------------------------------
+  \node[dato, minimum width=2.3cm] (in) at (0,0.1) {Immagine\\{\scriptsize $H\times W\times3$ (o 4 con nDSM)}};
+  \node[e] (stem) at (0,-0.95) {conv $7{\times}7$, s2 + max-pool};
+  \node[e] (e1) at (0,\yA) {\texttt{layer1}\\{\scriptsize 64 canali}};
+  \node[e] (e2) at (0,\yB) {\texttt{layer2}\\{\scriptsize 128 canali}};
+  \node[e] (e3) at (0,\yC) {\texttt{layer3}\\{\scriptsize 256 canali}};
+  \node[e] (e4) at (0,\yD) {\texttt{layer4}\\{\scriptsize 512 canali}};
+  \draw[flusso] (in) -- (stem);
+  \draw[flusso] (stem) -- (e1);
+  \draw[flusso] (e1) -- (e2);
+  \draw[flusso] (e2) -- (e3);
+  \draw[flusso] (e3) -- (e4);
+
+  % --- etichette di stride ----------------------------------------------------
+  \foreach \y/\s in {\yA/{1/4}, \yB/{1/8}, \yC/{1/16}, \yD/{1/32}}{
+    \node[nota, anchor=east] at (-1.45,\y) {$\s$};
+  }
+  \node[nota, anchor=east, font=\scriptsize\bfseries] at (-1.45,-1.45) {scala};
+
+  % --- attenzione sulle connessioni di salto ---------------------------------
+  \node[a] (a1) at (3.9,\yA) {PAM lineare $\parallel$ CAM};
+  \node[a] (a2) at (3.9,\yB) {PAM lineare $\parallel$ CAM};
+  \node[a] (a3) at (3.9,\yC) {PAM lineare $\parallel$ CAM};
+  \node[a] (a4) at (3.9,\yD) {PAM lineare $\parallel$ CAM};
+  \foreach \i in {1,...,4}{ \draw[flusso] (e\i) -- (a\i); }
+
+  % --- neck ------------------------------------------------------------------
+  \node[quant, minimum width=1.9cm] (neck) at (6.9,\yD) {Neck\\{\scriptsize identità o VQ}};
+  \draw[flusso] (a4) -- (neck);
+
+  % --- decoder ----------------------------------------------------------------
+  \node[d] (d4) at (9.6,{(\yC+\yD)/2}) {Dec$_4$ \scriptsize($\uparrow2$)};
+  \node[somma] (s3) at (9.6,\yC) {$+$};
+  \node[d] (d3) at (9.6,{(\yB+\yC)/2}) {Dec$_3$ \scriptsize($\uparrow2$)};
+  \node[somma] (s2) at (9.6,\yB) {$+$};
+  \node[d] (d2) at (9.6,{(\yA+\yB)/2}) {Dec$_2$ \scriptsize($\uparrow2$)};
+  \node[somma] (s1) at (9.6,\yA) {$+$};
+  \node[d] (d1) at (9.6,-0.95) {Dec$_1$ \scriptsize($\uparrow2$, 1/2)};
+  \node[d, fill=SapRossoVelo, text width=2.5cm] (head) at (9.6,0.25) {Testa\\{\scriptsize ConvT $4{\times}4$ s2,\\2 conv $3{\times}3$}};
+  \node[dato, anchor=west, minimum width=1.6cm] (out) at (11.8,0.25) {Logit\\{\scriptsize $H\times W\times6$}};
+
+  \draw[flusso] (neck) -| (d4);
+  \draw[flusso] (d4) -- (s3);
+  \draw[flusso] (s3) -- (d3);
+  \draw[flusso] (d3) -- (s2);
+  \draw[flusso] (s2) -- (d2);
+  \draw[flusso] (d2) -- (s1);
+  \draw[flusso] (s1) -- (d1);
+  \draw[flusso] (d1) -- (head);
+  \draw[flusso] (head) -- (out);
+
+  % connessioni di salto (dopo l'attenzione)
+  \draw[skipc] (a3) -- (s3);
+  \draw[skipc] (a2) -- (s2);
+  \draw[skipc] (a1) -- (s1);
+
+  % --- raggruppamenti -----------------------------------------------------------
+  \begin{scope}[on background layer]
+    \node[gruppo, fit=(stem)(e4), label={[nota]below:encoder (ResNet-18/34)}] {};
+    \node[gruppo, fit=(d1)(d4)(head), label={[nota]above:decoder}] {};
+  \end{scope}
+\end{tikzpicture}

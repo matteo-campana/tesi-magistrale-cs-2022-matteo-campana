@@ -1,0 +1,89 @@
+% =====================================================================
+%  Comandi e ambienti
+% =====================================================================
+
+% --- Enunciati -------------------------------------------------------------
+\theoremstyle{definition}
+\newtheorem{definizione}{Definizione}[chapter]
+\newtheorem{ipotesi}{Ipotesi}
+\theoremstyle{plain}
+\newtheorem{proposizione}[definizione]{Proposizione}
+\theoremstyle{remark}
+\newtheorem{osservazione}[definizione]{Osservazione}
+\renewcommand{\qedsymbol}{$\blacksquare$}
+\crefname{definizione}{definizione}{definizioni}
+\Crefname{definizione}{Definizione}{Definizioni}
+\crefname{proposizione}{proposizione}{proposizioni}
+\Crefname{proposizione}{Proposizione}{Proposizioni}
+\crefname{osservazione}{osservazione}{osservazioni}
+\Crefname{osservazione}{Osservazione}{Osservazioni}
+
+% --- Notazione matematica ----------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Ind}{\mathbf{1}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator{\softmax}{softmax}
+\DeclareMathOperator{\sg}{sg}                 % stop-gradient
+\DeclareMathOperator{\GAP}{GAP}               % global average pooling
+\DeclareMathOperator{\PPL}{PPL}               % perplexity del codebook
+\DeclareMathOperator{\KL}{D_{KL}}
+\newcommand{\Hent}{\mathrm{H}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1 \right\rvert}
+\newcommand{\T}{^{\top}}
+\newcommand{\bigO}[1]{\mathcal{O}\!\left(#1\right)}
+\newcommand{\vect}[1]{\bm{#1}}
+\newcommand{\hatq}{\hat{\vect{q}}}
+\newcommand{\hatk}{\hat{\vect{k}}}
+
+% --- Nomi ricorrenti -----------------------------------------------------------
+\newcommand{\maresunet}{MAResU-Net}
+\newcommand{\maresunetvq}{MAResU-Net-VQ}
+\newcommand{\rsseg}{\texttt{rsseg}}
+\newcommand{\RQ}[1]{\textbf{RQ#1}}
+\newcommand{\codice}[1]{\texttt{#1}}
+\newcommand{\tile}[1]{\texttt{#1}}
+
+% --- Quadratino con il colore di una classe ISPRS (per le legende) -------------
+\newcommand{\ClasseBox}[1]{%
+  \tikz[baseline=-0.6ex]\draw[black!60, line width=0.3pt, fill=#1] (0,0) rectangle (0.8em,0.8em) ++(0,-0.4em);}
+\newcommand{\ClasseBoxX}[1]{%
+  \tikz[baseline=0.05em]\draw[black!60, line width=0.3pt, fill=#1] (0,0) rectangle (0.8em,0.8em);}
+
+% --- Segnaposto per le parti sperimentali ------------------------------------
+% \Segnaposto{...}  nota in linea, ben visibile, per contenuti ancora da produrre
+% \ND               valore non ancora disponibile in una cella di tabella
+% \FiguraMancante{descrizione}{altezza}  riquadro al posto di una figura
+\newcommand{\Segnaposto}[1]{\todo[inline]{#1}}
+\newcommand{\ND}{\textcolor{SapRosso}{\textit{n.d.}}}
+\newcommand{\FiguraMancante}[2][4cm]{%
+  \ifbozza
+    \begin{tikzpicture}
+      \draw[SapRosso, dashed, line width=0.8pt, fill=SapRossoVelo]
+        (0,0) rectangle (0.95\linewidth, #1);
+      \node[text width=0.8\linewidth, align=center, font=\small\itshape, text=SapRossoScuro]
+        at (0.475\linewidth, #1/2) {Figura da inserire\\[0.3em]#2};
+    \end{tikzpicture}%
+  \else
+    \fbox{\parbox[c][#1][c]{0.95\linewidth}{\centering\small\itshape Figura da inserire: #2}}%
+  \fi}
+
+% --- Stili TikZ condivisi dagli schemi -------------------------------------
+\tikzset{
+  >={Stealth[length=2.2mm]},
+  blocco/.style={draw=SapRossoScuro, line width=0.5pt, rounded corners=1.5pt,
+                 align=center, font=\footnotesize, minimum height=7mm, inner sep=2.5pt},
+  enc/.style={blocco, fill=ColEncoder},
+  dec/.style={blocco, fill=ColDecoder, draw=SapGrigio},
+  attn/.style={blocco, fill=ColAttn},
+  quant/.style={blocco, fill=ColQuant, text=white, draw=SapRossoScuro},
+  dato/.style={blocco, draw=SapGrigio, fill=white, rounded corners=0pt},
+  nota/.style={font=\scriptsize\itshape, text=SapGrigio, align=center},
+  flusso/.style={->, draw=ColFreccia, line width=0.6pt},
+  grad/.style={->, draw=ColGradiente, line width=0.6pt, dashed},
+  skipc/.style={->, draw=SapRosso, line width=0.6pt},
+  gruppo/.style={draw=SapGrigioTenue, dashed, rounded corners=3pt, inner sep=6pt},
+}

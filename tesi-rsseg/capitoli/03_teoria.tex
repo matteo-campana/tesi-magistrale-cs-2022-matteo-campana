@@ -1,0 +1,808 @@
+% =====================================================================
+%  Capitolo 3 — Fondamenti teorici
+% =====================================================================
+\chapter{Fondamenti teorici}
+\label{cap:teoria}
+
+Questo capitolo sviluppa il quadro teorico dei meccanismi studiati. Si parte dalla formulazione
+del problema e dalla funzione di perdita, poi si passa all'architettura encoder-decoder e ai
+meccanismi di attenzione, fino alla derivazione dell'attenzione lineare usata da \maresunet{}.
+Seguono la quantizzazione vettoriale e l'auto-distillazione, la fusione dell'informazione
+altimetrica, le metriche e l'inferenza su tile intere. Per ogni meccanismo si mettono in
+evidenza le proprietà che motivano le domande di ricerca e le scelte del
+\cref{cap:metodologia}.
+
+% ---------------------------------------------------------------------
+\section{Formulazione del problema}
+\label{sec:formulazione}
+
+Un'immagine è un tensore $\vect{x}\in\R^{H\times W\times C_{\mathrm{in}}}$, con $C_{\mathrm{in}}=3$
+(RGB o IR-R-G) oppure $C_{\mathrm{in}}=4$ se si aggiunge l'nDSM. L'insieme delle posizioni è
+$\Omega=\{1,\dots,H\}\times\{1,\dots,W\}$. L'etichetta è una mappa
+$y:\Omega\to\{1,\dots,K\}\cup\{\varnothing\}$, dove $K=6$ è il numero di classi e
+$\varnothing$ (codificato con il valore 255) indica un pixel senza etichetta valida. Le
+posizioni etichettate sono $\Omega_v=\{u\in\Omega : y_u\neq\varnothing\}$.
+
+Un modello di segmentazione $f_\theta$ associa a ogni posizione un vettore di logit
+$\vect{z}_u=f_\theta(\vect{x})_u\in\R^K$ e quindi la distribuzione
+$p_\theta(k\mid\vect{x},u)=\softmax(\vect{z}_u)_k$. L'addestramento minimizza l'entropia
+incrociata media sulle posizioni etichettate:
+\begin{equation}
+  \mathcal{L}_{\mathrm{CE}}(\theta)
+  = -\frac{1}{\abs{\Omega_v}}\sum_{u\in\Omega_v}\log p_\theta(y_u\mid\vect{x},u).
+  \label{eq:ce-mascherata}
+\end{equation}
+La predizione è $\hat y_u=\argmax_k \vect{z}_{u,k}$. La scelta di \emph{quali} pixel entrano in
+$\Omega_v$ non è un dettaglio implementativo, come mostra il risultato seguente.
+
+\begin{proposizione}[Classe esclusa dalla perdita]
+\label{prop:classe-esclusa}
+Si escluda dalla perdita~\eqref{eq:ce-mascherata} una classe reale $c$, cioè si sostituisca
+$\Omega_v$ con $\Omega_v'=\{u\in\Omega_v : y_u\neq c\}$. Allora, per ogni posizione
+$u\in\Omega_v'$,
+\[
+  \frac{\partial\mathcal{L}}{\partial z_{u,c}}=\frac{p_\theta(c\mid\vect{x},u)}{\abs{\Omega_v'}}\;\geq\;0,
+\]
+mentre i pixel di classe $c$ non contribuiscono alla perdita. Ogni passo di discesa del gradiente
+riduce quindi il logit della classe $c$ e non lo aumenta mai.
+\end{proposizione}
+\begin{proof}
+Per una singola posizione $\ell_u=-\log\softmax(\vect{z}_u)_{y_u}$ si ha
+$\partial\ell_u/\partial z_{u,k}=p_\theta(k\mid\vect{x},u)-\Ind[k=y_u]$. Per $u\in\Omega_v'$ vale
+$y_u\neq c$, quindi la derivata rispetto a $z_{u,c}$ è $p_\theta(c\mid\vect{x},u)\ge0$. Le
+posizioni con $y_u=c$ non compaiono nella somma.
+\end{proof}
+
+Nel codice del 2022 l'indice ignorato era 0, che corrispondeva proprio al clutter. Per la
+\cref{prop:classe-esclusa} il modello riceveva solo una pressione a \emph{non} prevedere il
+clutter. Poteva ancora prevederlo dove l'ingresso era diverso da tutti i pixel etichettati,
+perché lì la pressione era solo indiretta: questo è compatibile con l'IoU basso ma non nullo
+riportato allora ($\approx0{,}15$). In questo lavoro si ignora soltanto il valore $\varnothing$.
+
+% ---------------------------------------------------------------------
+\section{Encoder-decoder residuali}
+\label{sec:encoder-decoder}
+
+\paragraph{Blocchi residui.}
+Un blocco residuo~\cite{he2016resnet} calcola $\vect{x}_{l+1}=\vect{x}_l+\mathcal{F}(\vect{x}_l;W_l)$.
+Nella forma semplificata con mappa identità, srotolando la ricorrenza si ottiene
+$\vect{x}_L=\vect{x}_l+\sum_{i=l}^{L-1}\mathcal{F}(\vect{x}_i;W_i)$ e quindi
+\begin{equation}
+  \frac{\partial\mathcal{L}}{\partial\vect{x}_l}
+  =\frac{\partial\mathcal{L}}{\partial\vect{x}_L}
+   \Bigl(I+\frac{\partial}{\partial\vect{x}_l}\sum_{i=l}^{L-1}\mathcal{F}(\vect{x}_i;W_i)\Bigr).
+\end{equation}
+Il termine identità fa arrivare il gradiente agli strati iniziali senza attenuazione
+moltiplicativa. Per questo encoder profondi pre-addestrati si possono rifinire in modo stabile.
+
+\paragraph{Gerarchia di scale.}
+Gli encoder ResNet producono quattro mappe $\vect{E}_1,\dots,\vect{E}_4$ a stride $4,8,16,32$
+(\cref{tab:stadi-resnet}). Le mappe superficiali sono ad alta risoluzione e semanticamente
+povere, quelle profonde sono povere di dettaglio spaziale. Il numero di posizioni
+$N_l=(H/s_l)(W/s_l)$ diminuisce di un fattore 4 a ogni stadio. È questa quantità a governare il
+costo dell'attenzione (\cref{sec:attenzione-dot}).
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Stadi degli encoder ResNet per un ritaglio di 512 pixel]{Stadi degli encoder ResNet
+    per un ritaglio di $512\times512$ pixel: stride, canali, numero di posizioni $N_l$ e memoria
+    della sola matrice di attenzione $N_l\times N_l$ in float32, per immagine e per testa.}
+  \label{tab:stadi-resnet}
+  \begin{tabular}{|c|c|c|c|c|r|}
+    \hline
+    \textbf{Stadio} & \textbf{Stride} & \makecell{\textbf{Canali}\\\textbf{R18/R34}} & \makecell{\textbf{Canali}\\\textbf{R50}} &
+    \textbf{Posizioni $N_l$} & \makecell{\textbf{Memoria}\\\textbf{$N_l^2$}} \\
+    \hline
+    $\vect{E}_1$ & 4  & 64  & 256  & $128^2=\num{16384}$ & \SI{1}{GiB} \\
+    $\vect{E}_2$ & 8  & 128 & 512  & $64^2=\num{4096}$   & \SI{64}{MiB} \\
+    $\vect{E}_3$ & 16 & 256 & 1024 & $32^2=\num{1024}$   & \SI{4}{MiB} \\
+    $\vect{E}_4$ & 32 & 512 & 2048 & $16^2=256$          & \SI{256}{KiB} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\paragraph{Decoder con connessioni di salto.}
+Uno schema U-Net~\cite{ronneberger2015unet} ricostruisce la risoluzione combinando, a ogni scala,
+l'uscita sovracampionata del livello inferiore con una trasformazione $\mathcal{S}_l$ della
+mappa dell'encoder alla stessa scala:
+\begin{equation}
+  \vect{D}_l=\mathrm{Dec}_{l+1}(\vect{D}_{l+1})+\mathcal{S}_l(\vect{E}_l).
+  \label{eq:decoder}
+\end{equation}
+Nella U-Net \enquote{semplice} $\mathcal{S}_l$ è l'identità. In \maresunet{} è un blocco di
+attenzione (\cref{sec:maresunet}). È esattamente questa differenza a essere misurata dalla
+\RQ{1}.
+
+% ---------------------------------------------------------------------
+\section{Meccanismi di attenzione}
+\label{sec:attenzione}
+
+\subsection{Attenzione dot-product}
+\label{sec:attenzione-dot}
+
+Sia $\vect{X}\in\R^{N\times C}$ una mappa di caratteristiche con le $N=hw$ posizioni disposte in
+righe. L'attenzione dot-product~\cite{vaswani2017attention} proietta $\vect{X}$ in query, key e
+value, $Q=\vect{X}W_q\in\R^{N\times d_k}$, $K=\vect{X}W_k\in\R^{N\times d_k}$ e
+$V=\vect{X}W_v\in\R^{N\times C}$, e calcola
+\begin{equation}
+  D(Q,K,V)=\softmax_{\mathrm{riga}}\!\left(\frac{QK\T}{\sqrt{d_k}}\right)V .
+  \label{eq:dot-product}
+\end{equation}
+L'uscita in posizione $i$ è una media pesata dei value di \emph{tutte} le posizioni, con pesi
+dati dalla somiglianza tra la query $\vect{q}_i$ e le key $\vect{k}_j$. La matrice $QK\T$ ha
+$N^2$ elementi: calcolo e memoria sono $\bigO{N^2 d_k}$ e $\bigO{N^2}$. Sul primo stadio di un
+ritaglio di $512\times512$ pixel ($N=\num{16384}$) la sola matrice occupa \SI{1}{GiB} in
+float32 per immagine e per testa (\cref{tab:stadi-resnet}). Con un batch di 8 immagini si
+superano gli \SI{8}{\giga\byte} della GPU usata in questo lavoro prima ancora di contare le
+attivazioni del resto della rete (\cref{fig:complessita}).
+
+\begin{figure}[t]
+  \centering
+  \input{figure/complessita_attenzione}
+  \caption[Memoria dell'attenzione dot-product e lineare]{Memoria richiesta dall'attenzione sul
+    primo stadio dell'encoder (stride 4, $C=64$, $d_k=C/8$) al variare del lato del ritaglio,
+    per una singola immagine in float32. La matrice $N\times N$ cresce con la quarta potenza
+    del lato. Lo stato dell'attenzione lineare cresce con il quadrato, cioè linearmente in
+    $N$.}
+  \label{fig:complessita}
+\end{figure}
+
+\subsection{Attenzione come media a nucleo}
+\label{sec:attenzione-nucleo}
+
+La riga $i$ della~\eqref{eq:dot-product} si può scrivere come
+\begin{equation}
+  D_i=\frac{\sum_{j=1}^{N}\mathrm{sim}(\vect{q}_i,\vect{k}_j)\,\vect{v}_j}
+           {\sum_{j=1}^{N}\mathrm{sim}(\vect{q}_i,\vect{k}_j)},
+  \qquad \mathrm{sim}(\vect{q},\vect{k})=\exp\!\bigl(\vect{q}\T\vect{k}/\sqrt{d_k}\bigr),
+  \label{eq:attenzione-nucleo}
+\end{equation}
+cioè come una media a nucleo dei value. La~\eqref{eq:attenzione-nucleo} definisce
+un'attenzione valida per qualunque funzione di somiglianza non negativa. Se
+$\mathrm{sim}(\vect{q},\vect{k})=\phi(\vect{q})\T\psi(\vect{k})$ per due mappe
+$\phi,\psi:\R^{d_k}\to\R^{m}$, la proprietà associativa del prodotto
+matriciale~\cite{katharopoulos2020linear} consente di raccogliere le somme sulle key, che non
+dipendono da $i$:
+\begin{equation}
+  D_i=\frac{\phi(\vect{q}_i)\T\Bigl(\sum_{j}\psi(\vect{k}_j)\,\vect{v}_j\T\Bigr)}
+           {\phi(\vect{q}_i)\T\sum_{j}\psi(\vect{k}_j)} .
+  \label{eq:attenzione-lineare-generale}
+\end{equation}
+La matrice $\sum_j\psi(\vect{k}_j)\vect{v}_j\T\in\R^{m\times C}$ e il vettore
+$\sum_j\psi(\vect{k}_j)\in\R^{m}$ si calcolano una sola volta in $\bigO{NmC}$. Ogni uscita
+costa poi $\bigO{mC}$: il costo complessivo è lineare in $N$ (\cref{fig:associativita}).
+
+\begin{figure}[t]
+  \centering
+  \resizebox{0.92\linewidth}{!}{\input{figure/associativita}}
+  \caption[Ordine dei prodotti nell'attenzione]{L'ordine dei prodotti determina il costo. A
+    sinistra la forma dot-product materializza la matrice $N\times N$. A destra la forma lineare
+    calcola prima $\hat K\T V\in\R^{d_k\times C}$, comune a tutte le query.}
+  \label{fig:associativita}
+\end{figure}
+
+\subsection{Il Linear Attention Mechanism}
+\label{sec:attenzione-lineare}
+
+Il LAM di Li et al.~\cite{li2020lam} ottiene una fattorizzazione del tipo
+\eqref{eq:attenzione-lineare-generale} sviluppando l'esponenziale al primo ordine,
+$e^{\vect{q}\T\vect{k}}\approx1+\vect{q}\T\vect{k}$. Lo sviluppo da solo non garantisce pesi non
+negativi, perché $\vect{q}\T\vect{k}$ può essere minore di $-1$. Per questo query e key vengono
+normalizzate in norma $\ell_2$, $\hatq_i=\vect{q}_i/\norm{\vect{q}_i}_2$ e
+$\hatk_j=\vect{k}_j/\norm{\vect{k}_j}_2$, e si usa
+\begin{equation}
+  \mathrm{sim}(\vect{q}_i,\vect{k}_j)=1+\hatq_i\T\hatk_j=1+\cos\vartheta_{ij}\in[0,2].
+\end{equation}
+Sostituendo nella~\eqref{eq:attenzione-nucleo} si ottiene
+\begin{equation}
+  D_i=\frac{\sum_{j}\vect{v}_j+\Bigl(\sum_{j}\hatk_j\vect{v}_j\T\Bigr)\T\hatq_i}
+           {N+\hatq_i\T\sum_{j}\hatk_j},
+  \label{eq:lam}
+\end{equation}
+che corrisponde alla~\eqref{eq:attenzione-lineare-generale} con
+$\phi(\vect{q})=(1,\hat{\vect{q}})$ e $\psi(\vect{k})=(1,\hat{\vect{k}})$, quindi con $m=d_k+1$.
+In forma matriciale, con $\hat Q$ e $\hat K$ normalizzate riga per riga,
+$D=\bigl(\vect{1}\vect{1}\T V+\hat Q(\hat K\T V)\bigr)\oslash\bigl(N\vect{1}+\hat Q\hat K\T\vect{1}\bigr)$,
+dove $\oslash$ divide ogni riga per il corrispondente elemento del vettore. Il calcolo richiede
+$\bigO{N d_k C}$ operazioni e memoria $\bigO{N(d_k+C)+d_kC}$. Nell'implementazione si aggiunge
+una piccola costante $\epsilon$ alla somma delle key per stabilità numerica.
+
+\begin{osservazione}[Contrasto limitato del LAM]
+\label{oss:contrasto}
+Sia $\bar{\vect{m}}=\frac1N\sum_j\hatk_j$ la media delle key normalizzate, con
+$\norm{\bar{\vect{m}}}_2\le1$. Il peso che la posizione $i$ assegna alla posizione $j$ è
+\[
+  \alpha_{ij}=\frac{1+\hatq_i\T\hatk_j}{N\,(1+\hatq_i\T\bar{\vect{m}})}
+  \;\leq\;\frac{2}{N\,(1-\norm{\bar{\vect{m}}}_2)} .
+\]
+Se le key non sono tutte allineate ($\norm{\bar{\vect{m}}}_2$ lontana da 1), nessuna posizione
+riceve più di una piccola frazione costante del peso medio $1/N$. La softmax, al contrario, può
+concentrare quasi tutto il peso su una sola posizione. Il LAM si comporta quindi come
+un'\emph{aggregazione di contesto globale modulata} dalla somiglianza coseno più che come un
+meccanismo di selezione. Il caso $\norm{\bar{\vect{m}}}_2\to1$ con
+$\hatq_i\approx-\bar{\vect{m}}$ è quello in cui il denominatore si annulla e serve
+$\epsilon$.
+\end{osservazione}
+
+L'osservazione suggerisce che il contributo del LAM vada cercato nella coerenza su larga scala
+(per esempio nell'uniformità delle grandi superfici) più che nella precisione dei contorni.
+\Segnaposto{Verificare l'osservazione sui modelli addestrati: distribuzione di
+$\norm{\bar{\vect{m}}}_2$ e di $\max_j\alpha_{ij}$ per stadio, da confrontare con le classi in
+cui \RQ{1} mostra differenze.}
+
+L'uscita del blocco è residuale, $\vect{X}'=\vect{X}+\gamma\,D(\vect{X})$, con un guadagno
+scalare $\gamma$ appreso e \textbf{inizializzato a zero}. All'inizio dell'addestramento il
+blocco è quindi l'identità e il modello parte dal comportamento della rete senza attenzione.
+
+\subsection{Attenzione sui canali}
+\label{sec:cam}
+
+Sui canali il costo quadratico non è un problema, perché $C\ll N$. Seguendo
+DANet~\cite{fu2019danet}, il modulo CAM calcola la matrice di affinità tra canali
+$E=\vect{X}\T\vect{X}\in\R^{C\times C}$ e i pesi
+$A=\softmax_{\mathrm{riga}}\bigl(\max_{\mathrm{riga}}(E)-E\bigr)$, poi produce
+$\vect{X}'=\vect{X}+\beta\,\vect{X}A\T$ con $\beta$ inizializzato a zero. Il costo è
+$\bigO{NC^2}$.
+
+\begin{osservazione}
+La softmax è invariante per l'aggiunta di una costante a ciascuna riga, quindi
+$\softmax_{\mathrm{riga}}(\max_{\mathrm{riga}}(E)-E)=\softmax_{\mathrm{riga}}(-E)$. La
+sottrazione del massimo è solo un accorgimento di stabilità numerica, e l'effetto netto è di
+dare più peso ai canali \emph{meno} correlati con il canale considerato.
+\end{osservazione}
+
+\subsection{L'architettura MAResU-Net}
+\label{sec:maresunet}
+
+\maresunet{}~\cite{li2022maresunet} instanzia la~\eqref{eq:decoder} con un blocco di attenzione
+su ciascuna delle quattro scale (\cref{fig:maresunet,fig:pamcam}). Il blocco applica una
+convoluzione $3\times3$, poi in parallelo il PAM lineare~\eqref{eq:lam} e il CAM, ciascuno
+seguito da dropout spaziale e convoluzione $1\times1$. Le due uscite vengono sommate e
+proiettate con una convoluzione $1\times1$. Il decoder è
+\begin{align}
+  \vect{S}_l &= \mathrm{PAMCAM}_l(\vect{E}_l),\quad l=1,\dots,4, &
+  \vect{B} &= \mathrm{Neck}(\vect{S}_4), \nonumber\\
+  \vect{D}_3 &= \mathrm{Dec}_4(\vect{B})+\vect{S}_3, &
+  \vect{D}_2 &= \mathrm{Dec}_3(\vect{D}_3)+\vect{S}_2, \label{eq:maresunet}\\
+  \vect{D}_1 &= \mathrm{Dec}_2(\vect{D}_2)+\vect{S}_1, &
+  \vect{z} &= \mathrm{Head}\bigl(\mathrm{Dec}_1(\vect{D}_1)\bigr). \nonumber
+\end{align}
+Ogni $\mathrm{Dec}_l$ è la sequenza convoluzione $1\times1$ (riduzione dei canali a un quarto),
+convoluzione trasposta $3\times3$ con stride 2 e convoluzione $1\times1$, ciascuna con batch
+normalization~\cite{ioffe2015batchnorm} e ReLU. La testa riporta la risoluzione piena con una
+convoluzione trasposta $4\times4$ con stride 2 seguita da due convoluzioni $3\times3$. Il
+\emph{neck} è l'identità nella \maresunet{} e un quantizzatore vettoriale nella \maresunetvq{}
+(\cref{sec:vq}).
+
+\begin{figure}[p]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/maresunet}}
+  \caption[Architettura MAResU-Net]{Architettura \maresunet{}. Le mappe dell'encoder a stride
+    4--32 passano da un blocco di attenzione (PAM lineare e CAM in parallelo) prima di essere
+    sommate alle uscite del decoder. Il neck sul collo di bottiglia è l'identità oppure un
+    quantizzatore vettoriale. Le frecce rosse sono le connessioni di salto.}
+  \label{fig:maresunet}
+  \vspace{1.2em}
+  \resizebox{\linewidth}{!}{\input{figure/blocco_pamcam}}
+  \caption[Blocco di attenzione PAM-CAM]{Blocco di attenzione di \maresunet{}. Entrambi i rami
+    sono residuali con guadagno iniziale nullo: all'inizio dell'addestramento il blocco calcola
+    soltanto le convoluzioni.}
+  \label{fig:pamcam}
+\end{figure}
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Costo dei moduli di attenzione]{Costo asintotico dei moduli di attenzione su una
+    mappa con $N$ posizioni e $C$ canali ($d_k=C/8$ nel PAM).}
+  \label{tab:costo-attenzione}
+  \begin{tabular}{|l|c|c|l|}
+    \hline
+    \textbf{Modulo} & \textbf{Calcolo} & \textbf{Memoria aggiuntiva} & \textbf{Uso} \\
+    \hline
+    PAM dot-product & $\bigO{N^2(d_k+C)}$ & $\bigO{N^2}$ & solo mappe piccole \\
+    PAM lineare (LAM) & $\bigO{N d_k C}$ & $\bigO{N(d_k+C)+d_kC}$ & tutti gli stadi \\
+    CAM & $\bigO{NC^2}$ & $\bigO{C^2}$ & tutti gli stadi \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\section{Quantizzazione vettoriale}
+\label{sec:vq}
+
+\subsection{Codebook e assegnazione}
+
+Un quantizzatore vettoriale~\cite{vandenoord2017vqvae} mantiene un \emph{codebook}
+$\mathcal{E}=\{\vect{e}_1,\dots,\vect{e}_K\}\subset\R^{D}$ e sostituisce ogni vettore
+$\vect{z}_e(u)\in\R^{D}$ prodotto dall'encoder con il codice più vicino:
+\begin{equation}
+  k^\star(u)=\argmin_{k}\norm{\vect{z}_e(u)-\vect{e}_k}_2^2,
+  \qquad
+  \vect{z}_q(u)=\vect{e}_{k^\star(u)} .
+  \label{eq:vq-assegnazione}
+\end{equation}
+Lo spazio delle caratteristiche viene così partizionato nelle celle di Voronoi dei codici
+(\cref{fig:vq}b), e il decoder riceve uno dei soli $K$ valori possibili per ogni posizione. La
+distanza si calcola senza materializzare differenze, come
+$\norm{\vect{z}}^2-2\vect{z}\T\vect{e}_k+\norm{\vect{e}_k}^2$.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/vq_schema}}
+  \caption[Quantizzazione vettoriale]{Quantizzazione vettoriale. (a)~Flusso in avanti e
+    gradiente \emph{straight-through}: il gradiente rispetto a $\vect{z}_q$ viene copiato su
+    $\vect{z}_e$. (b)~Geometria nello spazio delle caratteristiche: il vettore $\vect{z}_e$ è
+    assegnato al codice più vicino, il termine di commitment lo avvicina al codice e
+    l'aggiornamento EMA sposta il codice verso il centroide dei vettori assegnati.}
+  \label{fig:vq}
+\end{figure}
+
+\subsection{Gradiente straight-through e perdita}
+
+L'$\argmin$ ha derivata nulla quasi ovunque. Lo stimatore
+\emph{straight-through}~\cite{bengio2013straight} usa nel passo in avanti il valore quantizzato
+e nel passo all'indietro l'identità:
+\begin{equation}
+  \tilde{\vect{z}}=\vect{z}_e+\sg\!\left[\vect{z}_q-\vect{z}_e\right],
+  \qquad
+  \tilde{\vect{z}}=\vect{z}_q,\quad
+  \frac{\partial\tilde{\vect{z}}}{\partial\vect{z}_e}=I,
+  \label{eq:straight-through}
+\end{equation}
+dove $\sg[\cdot]$ è l'operatore \emph{stop-gradient} (identità in avanti, derivata nulla). Il
+codebook non riceve gradiente dal decoder e va appreso con un termine apposito. Si aggiunge
+inoltre un termine di \emph{commitment} che impedisce alle uscite dell'encoder di allontanarsi
+indefinitamente dai codici:
+\begin{equation}
+  \mathcal{L}_{\mathrm{VQ}}=
+  \underbrace{\norm{\sg[\vect{z}_e]-\vect{z}_q}_2^2}_{\text{codebook}}
+  +\beta\,\underbrace{\norm{\vect{z}_e-\sg[\vect{z}_q]}_2^2}_{\text{commitment}},
+  \qquad
+  \mathcal{L}=\mathcal{L}_{\mathrm{CE}}+\lambda\,\mathcal{L}_{\mathrm{VQ}},
+  \label{eq:vq-loss}
+\end{equation}
+con le norme mediate sulle posizioni e sulle componenti, $\beta=0{,}25$ e $\lambda$ peso della
+perdita ausiliaria.
+
+\subsection{Aggiornamento EMA come K-means online}
+
+In alternativa al termine \enquote{codebook} della~\eqref{eq:vq-loss}, i codici possono essere
+aggiornati con medie mobili esponenziali~\cite{vandenoord2017vqvae,razavi2019vqvae2}. Sia, per
+un batch, $n_k=\sum_u\Ind[k^\star(u)=k]$ il numero di vettori assegnati al codice $k$ e
+$\vect{s}_k=\sum_u\Ind[k^\star(u)=k]\,\vect{z}_e(u)$ la loro somma. Con decadimento
+$\gamma\in(0,1)$:
+\begin{equation}
+  N_k\leftarrow\gamma N_k+(1-\gamma)\,n_k,\qquad
+  \vect{M}_k\leftarrow\gamma\vect{M}_k+(1-\gamma)\,\vect{s}_k,\qquad
+  \vect{e}_k\leftarrow\vect{M}_k/\tilde N_k ,
+  \label{eq:vq-ema}
+\end{equation}
+dove $\tilde N_k=\frac{N_k+\varepsilon}{\sum_j N_j+K\varepsilon}\sum_jN_j$ è una versione
+regolarizzata (smoothing di Laplace) che evita divisioni per zero. Con l'EMA la perdita si
+riduce al solo commitment, $\mathcal{L}_{\mathrm{VQ}}=\beta\norm{\vect{z}_e-\sg[\vect{z}_q]}^2$.
+
+\begin{proposizione}[EMA e K-means]
+\label{prop:ema-kmeans}
+Trascurando lo smoothing e l'inizializzazione, dopo $t$ passi l'aggiornamento~\eqref{eq:vq-ema}
+restituisce
+\[
+  \vect{e}_k^{(t)}=\frac{\sum_{\tau\le t}\gamma^{t-\tau}\vect{s}_k^{(\tau)}}
+                        {\sum_{\tau\le t}\gamma^{t-\tau}n_k^{(\tau)}}
+  =\argmin_{\vect{e}}\;\sum_{\tau\le t}\gamma^{t-\tau}\sum_{u}\Ind\!\left[k^{\star(\tau)}(u)=k\right]
+   \norm{\vect{z}_e^{(\tau)}(u)-\vect{e}}_2^2 ,
+\]
+cioè il centroide dei vettori assegnati al codice $k$, pesati con uno sconto esponenziale
+sull'età del batch. È un passo di Lloyd~\cite{lloyd1982kmeans} eseguito online.
+\end{proposizione}
+\begin{proof}
+Srotolando le ricorrenze, $\vect{M}_k^{(t)}=(1-\gamma)\sum_{\tau}\gamma^{t-\tau}\vect{s}_k^{(\tau)}$ e
+$N_k^{(t)}=(1-\gamma)\sum_\tau\gamma^{t-\tau}n_k^{(\tau)}$. Il fattore $(1-\gamma)$ si semplifica
+nel rapporto. La funzione a destra è quadratica e convessa in $\vect{e}$, e annullandone il
+gradiente,
+$-2\sum_\tau\gamma^{t-\tau}\bigl(\vect{s}_k^{(\tau)}-n_k^{(\tau)}\vect{e}\bigr)=\vect{0}$, si
+ottiene lo stesso rapporto.
+\end{proof}
+
+La \cref{prop:ema-kmeans} spiega perché lo stato EMA va trattato come stato persistente e non
+come parametro ricreato a ogni passo, come accadeva nel 2022. Spiega anche il collasso tipico del
+codebook: un codice che non riceve assegnazioni non si muove più, perché ha $n_k=0$ in ogni
+batch, e diventa un \emph{codice morto}. Le contromisure adottate sono due
+(\cref{alg:vq-ema}): l'\textbf{inizializzazione dai dati}, che pone i codici su vettori estratti
+dal primo batch invece che in un intorno dell'origine lontano dalle attivazioni post-ReLU, e il
+\textbf{riavvio dei codici morti}~\cite{lancucki2020robust}, che riposiziona su un vettore del
+batch ogni codice con $N_k$ sotto una soglia.
+
+\begin{algorithm}[t]
+  \caption{Passo di addestramento del quantizzatore con EMA e riavvio dei codici morti}
+  \label{alg:vq-ema}
+  \begin{algorithmic}[1]
+    \Require uscite dell'encoder $Z=\{\vect{z}_e(u)\}_{u}$, codebook $\{\vect{e}_k\}$, stato $\{N_k,\vect{M}_k\}$, decadimento $\gamma$, soglia $\tau_{\mathrm{morto}}$
+    \If{primo passo}
+      \State $\vect{e}_k\gets$ campione casuale di $Z$ (con piccolo rumore), $\vect{M}_k\gets\vect{e}_k$, $N_k\gets1$ per ogni $k$
+    \EndIf
+    \State $k^\star(u)\gets\argmin_k\norm{\vect{z}_e(u)-\vect{e}_k}^2$; \quad $\vect{z}_q(u)\gets\vect{e}_{k^\star(u)}$
+    \State $\mathcal{L}_{\mathrm{VQ}}\gets\beta\cdot\mathrm{media}_u\norm{\vect{z}_e(u)-\sg[\vect{z}_q(u)]}^2$
+    \State $N_k\gets\gamma N_k+(1-\gamma)n_k$; \quad $\vect{M}_k\gets\gamma\vect{M}_k+(1-\gamma)\vect{s}_k$
+    \ForEach{$k$ con $N_k<\tau_{\mathrm{morto}}$}
+      \State $\vect{M}_k\gets$ campione casuale di $Z$; \quad $N_k\gets1$ \Comment{riavvio}
+    \EndFor
+    \State $\vect{e}_k\gets\vect{M}_k/\tilde N_k$
+    \State \Return $\vect{z}_e+\sg[\vect{z}_q-\vect{z}_e]$, $\mathcal{L}_{\mathrm{VQ}}$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Diagnostica: perplexity e uso del codebook}
+
+Sia $\bar p_k=n_k/\sum_jn_j$ la frequenza di assegnazione del codice $k$ in un batch. Si
+definiscono
+\begin{equation}
+  \PPL=\exp\Bigl(-\sum_{k}\bar p_k\log\bar p_k\Bigr)\in[1,K],
+  \qquad
+  \mathrm{uso}=\frac{\abs{\{k:\bar p_k>0\}}}{K}\in\left[\tfrac1K,1\right].
+  \label{eq:perplexity}
+\end{equation}
+La perplexity è il numero \emph{effettivo} di codici usati: vale 1 se tutti i vettori finiscono
+sullo stesso codice e $K$ se l'uso è uniforme. Un codebook \enquote{sano}, nel senso della
+\RQ{2}, ha perplexity alta e uso vicino a 1 durante tutto l'addestramento.
+
+\subsection{Capacità del collo di bottiglia e aggiramento}
+\label{sec:vq-aggiramento}
+
+La quantizzazione limita l'informazione che attraversa il collo di bottiglia. Con $h\times w$
+posizioni e $K$ codici,
+\begin{equation}
+  I(\vect{x};\vect{z}_q)\;\le\;\Hent(\vect{z}_q)\;\le\;hw\log_2K\ \text{bit}.
+  \label{eq:capacita}
+\end{equation}
+Per un ritaglio di $512\times512$ pixel il collo di bottiglia di \maresunet{} è a stride 32
+($16\times16$ posizioni). Con $K=512$ porta al più $256\cdot9=\num{2304}$ bit, cioè 288 byte per
+ritaglio. La sola connessione di salto a stride 4 trasporta invece
+$128\cdot128\cdot64\approx10^6$ valori reali. Il collo di bottiglia vincola quindi solo il
+percorso più stretto della rete, che non è l'unico. Ne segue il risultato seguente.
+
+\begin{proposizione}[Aggiramento del collo di bottiglia]
+\label{prop:aggiramento}
+Si consideri la~\eqref{eq:maresunet} con il quantizzatore solo sul neck e si supponga che la
+perdita di segmentazione $\mathcal{L}_{\mathrm{CE}}$ ammetta un minimo globale con un decoder
+che non dipende da $\vect{B}$. Allora la perdita totale~\eqref{eq:vq-loss} ammette un minimo
+globale in cui il codebook usa un solo codice ($\PPL=1$).
+\end{proposizione}
+\begin{proof}
+Si parta dal minimo di $\mathcal{L}_{\mathrm{CE}}$ con decoder indipendente da $\vect{B}$. Le
+mappe $\vect{S}_1,\vect{S}_2,\vect{S}_3$ non dipendono dallo stadio $\vect{E}_4$. Si possono
+quindi modificare i parametri dell'ultimo stadio (per esempio azzerando il guadagno dell'ultima
+normalizzazione) in modo che $\vect{E}_4$, e quindi $\vect{z}_e$, sia costante e pari a
+$\vect{c}$, senza cambiare $\mathcal{L}_{\mathrm{CE}}$. Ponendo $\vect{e}_1=\vect{c}$, il
+commitment è nullo e tutti i vettori sono assegnati a $\vect{e}_1$. Entrambi i termini, che sono
+non negativi, sono al loro minimo.
+\end{proof}
+
+La proposizione non afferma che l'ottimizzazione raggiunga quella soluzione. Afferma che
+\emph{nulla nell'obiettivo la penalizza}: con le sole connessioni di salto libere, un risultato
+negativo della \maresunetvq{} non dice nulla sull'utilità della quantizzazione. Per questo la
+\RQ{2} misura la perplexity durante l'addestramento e prevede una variante in cui anche le
+connessioni di salto sono quantizzate, così che ogni percorso dall'encoder al decoder passi da
+un codebook e l'ipotesi della \cref{prop:aggiramento} cada.
+
+% ---------------------------------------------------------------------
+\section{Auto-distillazione senza etichette}
+\label{sec:dino}
+
+\subsection{Student, teacher e distribuzioni}
+
+DINO~\cite{caron2021dino} addestra uno \emph{student} $g_s=h_s\circ\GAP\circ f_s$ a riprodurre
+l'uscita di un \emph{teacher} $g_t=h_t\circ\GAP\circ f_t$ con la stessa architettura. Qui $f$ è
+l'encoder (lo stesso che verrà usato in \maresunet{}), $\GAP$ la media globale sulle posizioni e
+$h$ una testa di proiezione: un MLP a tre strati (2048, 2048, 256 unità con GELU),
+normalizzazione $\ell_2$ e uno strato lineare a peso normalizzato verso $K=\num{16384}$
+\enquote{prototipi}. Le uscite diventano distribuzioni con due temperature:
+\begin{equation}
+  P_s(\vect{x})=\softmax\!\left(\frac{g_s(\vect{x})}{\tau_s}\right),\qquad
+  P_t(\vect{x})=\softmax\!\left(\frac{g_t(\vect{x})-\vect{c}}{\tau_t}\right),
+  \label{eq:dino-distribuzioni}
+\end{equation}
+dove $\vect{c}\in\R^K$ è il \emph{centro} e $\tau_t<\tau_s$ rende la distribuzione del teacher
+più concentrata (\emph{sharpening}).
+
+\subsection{Multi-crop e perdita}
+
+Da ogni immagine si estraggono due viste globali $\vect{x}^{g_1},\vect{x}^{g_2}$ ($224\times224$,
+scala tra il 14\% e il 100\% dell'area) e $M$ viste locali $\vect{x}^{l_1},\dots,\vect{x}^{l_M}$
+($96\times96$, scala tra il 5\% e il 40\%), con trasformazioni cromatiche e geometriche
+casuali. Il teacher vede solo le viste globali, lo student tutte. Per un'immagine la perdita è
+\begin{equation}
+  \ell(\vect{x})=\frac{1}{\abs{\mathcal{P}}}\sum_{(a,b)\in\mathcal{P}}
+  \Hent\bigl(P_t(\vect{x}^{a}),P_s(\vect{x}^{b})\bigr),
+  \qquad
+  \mathcal{P}=\bigl\{(a,b):a\in\{g_1,g_2\},\ b\in V,\ b\neq a\bigr\},
+  \label{eq:dino-loss}
+\end{equation}
+con $V$ l'insieme di tutte le viste, $\Hent(p,q)=-\sum_kp_k\log q_k$ e
+$\abs{\mathcal{P}}=2(M+1)$. Sul batch si prende la media
+$\mathcal{L}=\frac1B\sum_i\ell(\vect{x}_i)$. La perdita incoraggia corrispondenze
+\enquote{da locale a globale}: lo student deve dedurre da una porzione dell'immagine la
+distribuzione che il teacher assegna a una vista ampia.
+
+\begin{osservazione}
+La normalizzazione~\eqref{eq:dino-distribuzioni} è \emph{per campione}: ogni immagine ha la sua
+distribuzione su $K$ prototipi. Calcolare la softmax sull'intero batch appiattito, come avveniva
+nel codice del 2022, produce un'unica distribuzione su $B\cdot K$ elementi (lì addirittura sui
+pixel dell'uscita densa del decoder). Le immagini del batch competono allora per la stessa massa
+di probabilità e l'obiettivo non è più quello di DINO.
+\end{osservazione}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figure/dino_schema}}
+  \caption[Auto-distillazione DINO]{Auto-distillazione con multi-crop. Il teacher vede solo le
+    viste globali e non riceve gradiente (sg). La sua uscita è centrata e resa più concentrata
+    con una temperatura bassa. Il teacher è una media mobile esponenziale dello student e il
+    centro è una media mobile delle uscite del teacher.}
+  \label{fig:dino}
+\end{figure}
+
+\subsection{Teacher come media mobile e centering}
+
+Il teacher non viene ottimizzato: i suoi parametri inseguono quelli dello student con una media
+mobile esponenziale, alla maniera di un \emph{mean teacher}~\cite{tarvainen2017meanteacher} o di
+una media di Polyak~\cite{polyak1992averaging}:
+\begin{equation}
+  \theta_t\leftarrow m\,\theta_t+(1-m)\,\theta_s,\qquad
+  m(\tau)=1-(1-m_0)\,\frac{1+\cos(\pi\tau/T)}{2},
+  \label{eq:dino-ema}
+\end{equation}
+con $m_0=0{,}996$ che cresce fino a 1 alla fine dell'addestramento (passo $\tau$ su $T$). Il
+teacher nasce come copia esatta dello student, e la media include le statistiche della batch
+normalization. Il centro è a sua volta una media mobile delle uscite del teacher sul batch:
+\begin{equation}
+  \vect{c}\leftarrow\lambda\,\vect{c}+(1-\lambda)\,\frac{1}{2B}\sum_{i=1}^{B}\sum_{a\in\{g_1,g_2\}}g_t(\vect{x}_i^{a}),
+  \qquad\lambda=0{,}9 .
+  \label{eq:dino-centro}
+\end{equation}
+
+\subsection{Collasso e sua diagnosi}
+\label{sec:collasso}
+
+L'entropia incrociata si scompone come
+$\Hent(P_t,P_s)=\Hent(P_t)+\KL(P_t\,\Vert\,P_s)$. Se il teacher produce la stessa distribuzione
+per ogni ingresso, lo student la può imitare perfettamente ($\KL=0$) senza aver imparato nulla:
+è il \emph{collasso}. Ne esistono due forme:
+\begin{itemize}
+  \item \textbf{collasso su una dimensione}: $P_t$ è quasi un vettore indicatore, uguale per
+  tutte le immagini, e $\Hent(P_t)\to0$;
+  \item \textbf{collasso uniforme}: $P_t$ è quasi uniforme per tutte le immagini, e
+  $\Hent(P_t)\to\log K$ ($\approx9{,}70$ nat per $K=\num{16384}$).
+\end{itemize}
+Il \emph{centering}~\eqref{eq:dino-centro} sottrae la componente comune a tutte le immagini e
+impedisce a una dimensione di dominare, ma da solo spinge verso l'uniforme. Lo
+\emph{sharpening} ($\tau_t$ piccola) ha l'effetto opposto. DINO bilancia le due forze.
+
+Entrambe le forme di collasso hanno in comune l'indipendenza dell'uscita dall'ingresso, che si
+misura con l'informazione mutua tra immagine e prototipo:
+\begin{equation}
+  I=\Hent\bigl(\E_{\vect{x}}[P_t(\vect{x})]\bigr)-\E_{\vect{x}}\bigl[\Hent(P_t(\vect{x}))\bigr]\;\ge\;0 .
+  \label{eq:dino-mi}
+\end{equation}
+Il collasso, in entrambe le forme, corrisponde a $I\to0$. Nel monitoraggio si registra a ogni
+epoca l'entropia media del teacher $\E_{\vect{x}}[\Hent(P_t)]$, che tende a $0$ o a $\log K$ in
+caso di collasso.
+\Segnaposto{Aggiungere al monitoraggio anche l'entropia della distribuzione media
+$\Hent(\E_{\vect{x}}[P_t])$, così da stimare la~\eqref{eq:dino-mi}.}
+
+\subsection{Schedule}
+
+Il learning rate cresce linearmente per 10 epoche fino a $\eta_0=5\cdot10^{-4}\cdot B/256$
+(regola di scala lineare) e poi decresce con un coseno fino a $10^{-6}$. Il \emph{weight decay}
+cresce con un coseno da 0,04 a 0,4. La temperatura del teacher cresce linearmente da 0,04 a 0,07
+nelle prime 30 epoche, mentre $\tau_s=0{,}1$ resta fissa. Uno schedule coseno da $v_0$ a
+$v_{\mathrm{fin}}$ su $T$ passi è
+$v(\tau)=v_{\mathrm{fin}}+(v_0-v_{\mathrm{fin}})\frac{1+\cos(\pi\tau/T)}{2}$. Il
+\cref{alg:dino} riassume un passo di addestramento.
+
+\begin{algorithm}[t]
+  \caption{Un passo di addestramento DINO}
+  \label{alg:dino}
+  \begin{algorithmic}[1]
+    \Require batch $\{\vect{x}_i\}_{i=1}^{B}$, student $\theta_s$, teacher $\theta_t$, centro $\vect{c}$, passo $\tau$
+    \State $(\eta,\mathrm{wd},m,\tau_t)\gets$ schedule al passo $\tau$
+    \ForEach{immagine $\vect{x}_i$}
+      \State genera $\vect{x}_i^{g_1},\vect{x}_i^{g_2}$ ($224^2$) e $\vect{x}_i^{l_1},\dots,\vect{x}_i^{l_M}$ ($96^2$)
+    \EndFor
+    \State $P_t\gets\softmax\bigl((g_t(\vect{x}^{g})-\vect{c})/\tau_t\bigr)$ \Comment{senza gradiente}
+    \State $P_s\gets\softmax\bigl(g_s(\vect{x}^{v})/\tau_s\bigr)$ per tutte le viste $v$
+    \State $\mathcal{L}\gets\frac1B\sum_i\frac{1}{\abs{\mathcal{P}}}\sum_{(a,b)\in\mathcal{P}}\Hent\bigl(P_t(\vect{x}_i^{a}),P_s(\vect{x}_i^{b})\bigr)$
+    \State aggiorna $\theta_s$ con AdamW($\eta$, wd) e clipping della norma del gradiente
+    \State $\theta_t\gets m\,\theta_t+(1-m)\,\theta_s$
+    \State $\vect{c}\gets\lambda\vect{c}+(1-\lambda)\,\mathrm{media}_{i,a}\,g_t(\vect{x}_i^{a})$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Augmentation e immagini aeree}
+\label{sec:augmentation-teoria}
+
+Le augmentation definiscono le invarianze che la rappresentazione impara: tutto ciò che varia
+tra due viste della stessa immagine viene trattato come rumore. Nelle immagini naturali le
+trasformazioni cromatiche forti (variazioni di luminosità, contrasto e saturazione, scala di
+grigi, solarizzazione) insegnano a ignorare l'illuminazione. Nelle immagini aeree, però, il
+colore è spesso l'indizio principale: in falso colore IR-R-G la vegetazione è rossa per la
+riflettanza nel vicino infrarosso. Rendere la rete invariante al colore può quindi eliminare
+informazione utile. D'altra parte, le immagini aeree non hanno un'orientazione canonica, e le
+rotazioni di \ang{90} e le riflessioni (il gruppo diedrale $D_4$) sono invarianze corrette che le
+augmentation di DINO non usano. La variante \enquote{aerea} studiata nella \RQ{4} attenua le
+trasformazioni cromatiche e aggiunge le trasformazioni di $D_4$.
+
+\subsection{Dal pre-addestramento alla segmentazione}
+
+Al termine del pre-addestramento si conserva solo l'encoder dello student, $f_s$, che inizializza
+l'encoder di \maresunet{}. Attenzione, decoder e testa partono da un'inizializzazione casuale.
+
+\begin{osservazione}[Obiettivo globale, compito denso]
+\label{oss:globale-denso}
+La perdita~\eqref{eq:dino-loss} agisce dopo la media globale $\GAP$: premia rappresentazioni
+che descrivono l'immagine nel suo insieme, non le singole posizioni. Il compito a valle è invece
+denso. Nulla nell'obiettivo garantisce che le mappe intermedie $\vect{E}_1,\vect{E}_2$, che
+alimentano le connessioni di salto, siano informative a livello di pixel. È una possibile
+ragione di un divario tra DINO e ImageNet indipendente dalla quantità di dati, e motiva la
+variante densa discussa nel \cref{cap:prospettive}.
+\end{osservazione}
+
+% ---------------------------------------------------------------------
+\section{Fusione dell'informazione altimetrica}
+\label{sec:ndsm}
+
+\subsection{Dal DSM all'nDSM}
+
+Il modello digitale di superficie (DSM) dà la quota assoluta della superficie visibile, quindi
+anche di tetti e chiome. Il modello normalizzato (nDSM) sottrae la quota del terreno (DTM) e
+restituisce l'altezza sul terreno, che è l'informazione utile a distinguere un tetto da una
+strada o un albero da un prato. Quando l'nDSM non è disponibile, il DTM si può stimare con
+un'\emph{apertura morfologica}~\cite{soille2003morphology}. Detti
+$\varepsilon_B(f)(u)=\min_{v\in B}f(u+v)$ ed $\delta_B(f)(u)=\max_{v\in B}f(u-v)$ l'erosione e
+la dilatazione con elemento strutturante $B$, si ha
+\begin{equation}
+  \widehat{\mathrm{DTM}}=\gamma_B(\mathrm{DSM})=\delta_B\bigl(\varepsilon_B(\mathrm{DSM})\bigr),
+  \qquad
+  \mathrm{nDSM}=\mathrm{DSM}-\widehat{\mathrm{DTM}} .
+  \label{eq:apertura}
+\end{equation}
+L'apertura elimina le strutture in rilievo più strette di $B$ (edifici, alberi, auto) e conserva
+l'andamento del terreno. Essendo \emph{anti-estensiva} ($\gamma_B(f)\le f$), garantisce
+$\mathrm{nDSM}\ge0$ per costruzione. In pratica si calcola il minimo del DSM su celle di circa
+\SI{1}{\meter}, si applica l'apertura con una finestra di circa \SI{30}{\meter}, si smussa il
+risultato e lo si riporta alla risoluzione originale. Il limite noto è che gli edifici più larghi
+della finestra lasciano parte della loro altezza nel terreno stimato. L'nDSM viene codificato in
+decimetri su 8 bit, $h=\min(\mathrm{round}(10\cdot\mathrm{nDSM}),255)$, con saturazione a
+\SI{25,5}{\meter}.
+
+\subsection{Fusione precoce ed estensione dei pesi}
+
+Nella fusione precoce l'nDSM normalizzato con media e deviazione standard del training,
+$\tilde h=(h-\mu_h)/\sigma_h$, diventa un quarto canale di ingresso. Il primo strato di un
+encoder pre-addestrato su tre canali, con pesi $W\in\R^{k\times k\times3\times C}$, va esteso a
+$W'=[\,W\mid\vect{w}_4\,]\in\R^{k\times k\times4\times C}$.
+
+\begin{proposizione}[Estensione con pesi nulli]
+\label{prop:inflazione}
+Se $\vect{w}_4=\vect{0}$, la rete con ingresso $[\vect{x};\tilde h]$ calcola esattamente la
+stessa funzione della rete RGB con ingresso $\vect{x}$, per ogni $\tilde h$. Il gradiente
+rispetto a $\vect{w}_4$ è però in generale non nullo, quindi l'addestramento può imparare a
+usare l'altezza partendo dal modello RGB.
+\end{proposizione}
+\begin{proof}
+Per linearità della convoluzione,
+$W'*[\vect{x};\tilde h]=W*\vect{x}+\vect{w}_4*\tilde h=W*\vect{x}$ quando $\vect{w}_4=\vect{0}$.
+Detto $\vect{\delta}$ il gradiente della perdita rispetto all'uscita del primo strato,
+$\partial\mathcal{L}/\partial\vect{w}_4[a,b,:]=\sum_u\tilde h(u+(a,b))\,\vect{\delta}(u)$, che è
+non nullo appena l'altezza è correlata con l'errore.
+\end{proof}
+
+L'alternativa $\vect{w}_4=\frac13\sum_cW_{:,:,c,:}$ tratta l'altezza come un canale di luminanza
+aggiuntivo. Perturba la funzione iniziale, ma dà subito al canale un peso dell'ordine di quelli
+RGB. Il confronto tra le due inizializzazioni fa parte della \RQ{6}.
+
+% ---------------------------------------------------------------------
+\section{Metriche di valutazione}
+\label{sec:metriche}
+
+\subsection{Matrice di confusione e metriche per classe}
+
+Tutte le metriche derivano dalla matrice di confusione $M\in\N^{K\times K}$, accumulata su
+\emph{tutti} i pixel etichettati dello split:
+$M_{ij}=\abs{\{u\in\Omega_v : y_u=i,\ \hat y_u=j\}}$. Per la classe $k$:
+\begin{gather}
+  \mathrm{TP}_k=M_{kk},\qquad
+  \mathrm{FP}_k=\sum_{i\neq k}M_{ik},\qquad
+  \mathrm{FN}_k=\sum_{j\neq k}M_{kj},\nonumber\\
+  P_k=\frac{\mathrm{TP}_k}{\mathrm{TP}_k+\mathrm{FP}_k},\qquad
+  R_k=\frac{\mathrm{TP}_k}{\mathrm{TP}_k+\mathrm{FN}_k},\nonumber\\
+  F1_k=\frac{2\,\mathrm{TP}_k}{2\,\mathrm{TP}_k+\mathrm{FP}_k+\mathrm{FN}_k},\qquad
+  \mathrm{IoU}_k=\frac{\mathrm{TP}_k}{\mathrm{TP}_k+\mathrm{FP}_k+\mathrm{FN}_k},
+  \label{eq:metriche}
+\end{gather}
+e l'accuratezza complessiva è $\mathrm{OA}=\operatorname{tr}(M)/\sum_{ij}M_{ij}$. Precision e
+recall corrispondono a \emph{correctness} e \emph{completeness} nella terminologia ISPRS.
+L'IoU (indice di Jaccard~\cite{everingham2010pascal}) e l'F1 sono legati da una relazione
+monotona:
+\begin{equation}
+  \mathrm{IoU}_k=\frac{F1_k}{2-F1_k},
+\end{equation}
+che si verifica sostituendo $T=\mathrm{TP}_k$ ed $E=\mathrm{FP}_k+\mathrm{FN}_k$ nelle
+definizioni. Le due metriche ordinano quindi i modelli allo stesso modo classe per classe, ma
+non necessariamente in media. mIoU e mF1 sono medie sulle classi presenti nel riferimento.
+Vengono riportate con tutte le classi e senza clutter, che in Vaihingen è quasi assente.
+
+\subsection{Perché una matrice di confusione globale}
+
+Mediare le metriche calcolate batch per batch non equivale a calcolarle sull'intero split,
+perché la media di rapporti è diversa dal rapporto delle somme. L'esempio della
+\cref{tab:media-batch} mostra lo scostamento su una classe rara. Usare \codice{nanmean} per
+saltare i batch in cui la classe è assente peggiora le cose, perché fa pesare un batch con un
+solo pixel della classe quanto un batch che ne contiene migliaia.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption[Media per batch e matrice di confusione globale]{IoU di una classe rara calcolato
+    come media per batch e dalla matrice di confusione globale.}
+  \label{tab:media-batch}
+  \begin{tabular}{|l|r|r|r|c|}
+    \hline
+    & \textbf{TP} & \textbf{FP} & \textbf{FN} & \textbf{IoU} \\
+    \hline
+    Batch A (un'auto piccola) & 1 & 0 & 0 & 1,000 \\
+    Batch B (parcheggio) & 90 & 60 & 50 & 0,450 \\
+    \hline
+    Media per batch & & & & 0,725 \\
+    \rowcolor{RigaRiferimento}
+    Matrice globale & 91 & 60 & 50 & 0,453 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\subsection{Etichette piene ed \emph{eroded}}
+
+Il benchmark ISPRS fornisce anche etichette \emph{eroded}, in cui una fascia di pixel lungo i
+contorni degli oggetti è marcata come non valida. Il motivo è che la posizione esatta di un
+contorno è incerta anche per l'annotatore. Valutare sulle etichette eroded significa sostituire
+$\Omega_v$ con $\Omega_v^{\mathrm{er}}\subset\Omega_v$. Il confronto tra le due versioni
+quantifica quanta parte dell'errore si concentra sui bordi. Le definizioni coincidono con quelle
+dello strumento di valutazione ufficiale ISPRS.
+
+% ---------------------------------------------------------------------
+\section{Inferenza su tile intere}
+\label{sec:finestra}
+
+Le tile di test (fino a $6000\times6000$ pixel) non entrano in memoria in un solo passo. Si
+predicono quindi con finestre di lato $w$ e passo $s<w$, e le probabilità delle finestre
+sovrapposte vengono fuse. Vicino ai bordi di una finestra il contesto è troncato e la
+predizione è meno affidabile: le probabilità vengono quindi pesate con una finestra di Hann
+separabile,
+\begin{equation}
+  \omega(u)=\omega_1(u_x)\,\omega_1(u_y),\qquad
+  \omega_1(t)=\sin^2\!\left(\frac{\pi(t+1)}{w+1}\right),\quad t=0,\dots,w-1,
+  \label{eq:hann}
+\end{equation}
+con un minimo di $10^{-3}$. Dette $o_j$ le origini delle finestre e $\vect{p}_j$ le loro
+probabilità,
+\begin{equation}
+  P(u)=\frac{\sum_j\omega(u-o_j)\,\vect{p}_j(u-o_j)}{\sum_j\omega(u-o_j)},
+  \qquad
+  \hat y_u=\argmax_kP_k(u).
+  \label{eq:fusione}
+\end{equation}
+Con passo $s=w/2$ e nel limite continuo vale $\sin^2(\pi t/w)+\sin^2(\pi(t+w/2)/w)=1$: le
+finestre formano una partizione dell'unità e il denominatore della~\eqref{eq:fusione} è
+costante lontano dai bordi della tile (\cref{fig:hann}). La normalizzazione serve allora solo
+vicino ai bordi e dove l'ultima finestra di ogni riga e colonna è allineata al bordo della tile.
+Le tile più piccole della finestra vengono estese per riflessione.
+
+\begin{figure}[t]
+  \centering
+  \input{figure/finestra_hann}
+  \caption[Fusione delle finestre con pesi di Hann]{Pesi di Hann con sovrapposizione del 50\%:
+    la somma è costante lontano dai bordi, quindi la fusione~\eqref{eq:fusione} è una media
+    convessa che privilegia il centro di ogni finestra.}
+  \label{fig:hann}
+\end{figure}

@@ -1,0 +1,54 @@
+% =====================================================================
+%  Palette colori
+%  Ricavata dal PDF della tesi del 2022 (legacy/tesi-magistrale/), leggendo
+%  i valori nei content stream e nelle annotazioni dei link:
+%    - rosso Sapienza RGB(130,36,51): frontespizio (definito dalla classe
+%      Sapthesis come `sapred', ridefinito qui per usarlo già nel preambolo);
+%    - cornici dei link di hyperref: rosso [1 0 0] per i riferimenti interni,
+%      verde [0 1 0] per le citazioni, ciano [0 1 1] per gli URL.
+%  Tutti gli altri colori sono tinte di questi, oppure i colori ufficiali
+%  delle classi ISPRS, che servono a leggere maschere e legende.
+% =====================================================================
+
+% --- Colori di identità (identici alla tesi del 2022) -----------------
+\definecolor{SapRosso}{rgb}{0.5098039,0.1411765,0.2}   % = sapred, #822433
+\definecolor{LinkRosso}{rgb}{1,0,0}                    % riferimenti interni
+\definecolor{CitaVerde}{rgb}{0,1,0}                    % citazioni
+\definecolor{UrlCiano}{rgb}{0,1,1}                     % URL
+
+% --- Tinte di supporto per schemi e tabelle ---------------------------
+\colorlet{SapRossoScuro}{SapRosso!80!black}
+\colorlet{SapRossoMedio}{SapRosso!60}
+\colorlet{SapRossoTenue}{SapRosso!30}
+\colorlet{SapRossoChiaro}{SapRosso!12}
+\colorlet{SapRossoVelo}{SapRosso!5}
+\colorlet{SapGrigio}{black!55}
+\colorlet{SapGrigioTenue}{black!25}
+\colorlet{SapGrigioChiaro}{black!8}
+
+% --- Classi ISPRS (palette ufficiale delle maschere di Potsdam/Vaihingen)
+\definecolor{ClsImpervious}{RGB}{255,255,255}   % superfici impermeabili
+\definecolor{ClsBuilding}{RGB}{0,0,255}         % edifici
+\definecolor{ClsLowVeg}{RGB}{0,255,255}         % vegetazione bassa
+\definecolor{ClsTree}{RGB}{0,255,0}             % alberi
+\definecolor{ClsCar}{RGB}{255,255,0}            % auto
+\definecolor{ClsClutter}{RGB}{255,0,0}          % clutter / sfondo
+
+% --- Ruoli semantici negli schemi --------------------------------------
+\colorlet{ColEncoder}{SapRossoChiaro}     % encoder / backbone
+\colorlet{ColDecoder}{SapGrigioChiaro}    % decoder
+\colorlet{ColAttn}{SapRossoTenue}         % blocchi di attenzione
+\colorlet{ColQuant}{SapRosso}             % quantizzazione vettoriale
+\colorlet{ColFreccia}{SapGrigio}          % frecce di flusso
+\colorlet{ColGradiente}{SapRosso}         % percorsi del gradiente
+
+% --- Split dei dati -----------------------------------------------------
+\colorlet{SplitTrain}{SapRossoMedio}
+\colorlet{SplitVal}{SapRossoTenue}
+\colorlet{SplitTest}{SapGrigio}
+\colorlet{SplitEscl}{white}
+
+% --- Righe evidenziate e segnaposto -------------------------------------
+\colorlet{RigaRiferimento}{SapRossoVelo}  % righe di riferimento nelle tabelle
+\colorlet{ColTodo}{SapRossoChiaro}        % sfondo delle note \todo
+\colorlet{ColTodoBordo}{SapRosso}

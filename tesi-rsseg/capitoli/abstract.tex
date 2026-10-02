@@ -1,0 +1,41 @@
+% =====================================================================
+%  Abstract
+% =====================================================================
+% La classe, in italiano, intitola l'ambiente "Sommario": qui si usa "Abstract".
+\begin{abstract}[Abstract]
+La segmentazione semantica di ortofoto aeree ad altissima risoluzione assegna una classe di
+copertura del suolo (superfici impermeabili, edifici, vegetazione bassa, alberi, auto, clutter) a
+ogni pixel dell'immagine. Il compito è reso difficile da un'elevata variabilità intra-classe
+unita a una bassa variabilità inter-classe, dalle ombre e dalle occlusioni e, soprattutto, dal
+costo delle annotazioni, che restano poche e richiedono personale esperto.
+
+Una prima tesi, discussa nel 2022, ha studiato due estensioni dell'architettura \maresunet{}
+(encoder ResNet, decoder U-Net e \emph{Linear Attention Mechanism} nelle connessioni di salto):
+un collo di bottiglia quantizzato con un codebook di tipo VQ-VAE e un pre-addestramento
+auto-supervisionato dell'encoder per auto-distillazione (DINO) sul dataset ISPRS Potsdam.
+Entrambe peggioravano la baseline pre-addestrata su ImageNet. Una revisione sistematica di quel
+lavoro mostra però che il risultato non è conclusivo: la classe clutter era esclusa dalla
+funzione di perdita, le metriche erano mediate per batch, la validation probabilmente non era
+indipendente dal training e il pre-addestramento si discostava in punti sostanziali dal metodo
+originale.
+
+Questa tesi ripropone le stesse domande con un'implementazione nuova, verificata e
+riproducibile, e con un protocollo confrontabile con la letteratura: split standard per tile
+intere, valutazione su tile complete con etichette piene ed \emph{eroded}, matrice di confusione
+globale e più seed per configurazione. Le domande di ricerca riguardano il contributo
+dell'attenzione lineare (\RQ{1}), l'effetto di un codebook monitorato e protetto dal collasso
+(\RQ{2}), il valore di un pre-addestramento DINO fedele all'originale al variare della quantità
+di etichette (\RQ{3}), l'adeguatezza delle trasformazioni di \emph{data augmentation} alle immagini
+aeree (\RQ{4}), il compromesso tra accuratezza e costo computazionale su una singola GPU da
+\SI{8}{\giga\byte} (\RQ{5}) e l'uso dell'altezza normalizzata sul terreno (nDSM) come quarto
+canale di ingresso (\RQ{6}). Il secondo benchmark è il dataset ISPRS Vaihingen.
+
+Il lavoro sviluppa il quadro teorico dei tre meccanismi: la derivazione dell'attenzione a costo
+lineare nel numero di pixel, la quantizzazione vettoriale come K-means online con stimatore
+\emph{straight-through}, l'analisi del collasso nell'auto-distillazione. Definisce inoltre un
+disegno sperimentale che collega ogni domanda di ricerca a una campagna di esperimenti
+eseguibile e riprendibile.
+
+\Segnaposto{Aggiungere una sintesi quantitativa dei risultati (mIoU sul test di Potsdam e
+Vaihingen, effetto di VQ, DINO e nDSM) quando le campagne saranno completate.}
+\end{abstract}
